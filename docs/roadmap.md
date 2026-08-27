@@ -13,6 +13,26 @@
 - `scripts/phase0-smoke.ts` (28 checks) + `npm run typecheck` green.
 - **DoD:** docs coherent, typecheck green, smoke green, no feature code.
 
+## Phase 1a — Wallet, Sui ownership & app shell ✅
+
+Wallet-first milestone (see [`docs/ownership.md`](ownership.md)):
+
+- **`@mova/wallet`** (`packages/wallet`): Sui ownership layer — `WalletExecutionGate`
+  (safety boundary), ownership proof (sign-in-with-Sui), `PaymentAuthz` (human-approved,
+  wallet-scoped, nonce'd), payment records/receipts, network handling, provider abstraction.
+- **`apps/web`**: Next.js + `@mysten/dapp-kit-react` (v2) shell — dashboard, natural-language
+  payment input, deterministic validation, payment-flow timeline, approval interface,
+  txn history, notification/status area, ownership panel, network detection + switching,
+  dev-only Demo Wallet.
+- **`contracts/mova`**: `mova_owned.move` ownership blueprint (Sui-owned `MovaPaymentAuthz`,
+  `OwnedPaymentRecord`, `MovaReceipt`) — deploy target for Phase 2.
+- **Safety boundary enforced:** nothing reaches `EXECUTING` without
+  `Intent → Validation → Approval → Wallet authz → Execution`. AI suggestions and
+  network mismatches are refused fail-closed.
+- **DoD:** wallet connects, network detected, user identity available, ownership visible,
+  failed wallet ops handled, no AI instruction bypasses approval. Settlement = simulated
+  (no fake digests). Typecheck + wallet tests green.
+
 ## Phase 1 — Core pipeline (Supabase backend, simulated settlement)
 
 - **Supabase** (`supabase/`): Edge Functions per `api-contracts.md`;

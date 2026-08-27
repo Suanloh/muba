@@ -1,11 +1,11 @@
 # MOVA — AI-native Autonomous Payment Agent
 
-> **Phase 0 — Project Foundation & Technical Blueprint.** This repository currently
-> contains the technical foundation (architecture, data models, state machine,
-> interfaces, config boundaries, deterministic mock layer) for MOVA. No feature
-> code is implemented yet — that starts in Phase 1 per `docs/roadmap.md`.
-
-> **Still need to be changed for this README**
+> **Phase 1 (wallet, ownership & app shell) delivered.** A working MOVA shell now
+> connects real Sui wallets, establishes the Sui ownership layer
+> (`@mova/wallet` + `docs/ownership.md`), and enforces the safety boundary
+> (Intent → Validation → Approval → Wallet authz → Execution). Payment
+> *execution* is kept for later phases — settlement is simulated and never
+> fabricates a digest.
 
 MOVA turns a human payment intent (typed or scanned from a local EMVCo QR) into
 an audited, approved, executed settlement on **Sui (Mainnet target)**, with
@@ -20,9 +20,11 @@ User Intent → AI Parsing → Route Discovery → Route Optimization → Compli
 
 | Concern | Choice |
 | --- | --- |
-| Backend / DB | **Supabase** (PostgreSQL, Auth, Realtime, Edge Functions) |
+| Frontend | **Next.js** (`apps/web`) + `@mysten/dapp-kit-react` (v2) wallet layer |
+| Backend / DB | **Supabase** (PostgreSQL, Auth, Realtime, Edge Functions) — Phase 1+ |
 | LLM | **Google Gemini** (proposals only) |
 | Settlement | **Sui — Mainnet target** (dev/test use devnet/testnet) |
+| Ownership | **Sui-owned state** anchored to the user's address (`@mova/wallet`, `contracts/mova`) |
 | Hedging | **Thetanuts V4 / Optionbook** |
 | QR | **Local EMVCo decoder** (`packages/qr`, no external call) |
 | Architecture | AI parses/recommends → deterministic engines validate → human approves → wallet executes |
@@ -39,16 +41,17 @@ violated, not a style issue.
 ## Repository layout
 
 ```
-docs/                 Phase 0 blueprint (start here)
+docs/                 Phase 0 blueprint + ownership model (start here)
 packages/types        shared domain models + payment state machine
 packages/config       env schema + dev/testnet/mainnet network configs
 packages/logger       structured logging + error conventions
 packages/core         deterministic engine contracts + state-machine runner
 packages/qr           local EMVCo QR decoder (deterministic, no external call)
 packages/integrations sponsor provider interfaces + deterministic mocks
-apps/web              Next.js UI + Supabase client (Phase 1+)
+packages/wallet       Sui ownership layer: gate, authz, network, provider abstraction
+apps/web              Next.js wallet-connected app shell (Phase 1)
 supabase/             backend platform: Edge Functions, Auth, Realtime, Postgres
-contracts/            Sui Move package (Phase 2+)
+contracts/            Sui Move package — ownership blueprint (mova_owned.move), deploy in Phase 2
 skills/               reusable skill pack (safety + architecture guidance)
 ```
 
@@ -59,6 +62,7 @@ skills/               reusable skill pack (safety + architecture guidance)
 | [`docs/architecture.md`](docs/architecture.md) | Arch overview, layers, module responsibilities, repo structure |
 | [`docs/data-model.md`](docs/data-model.md) | Entities & relationships (users, wallets, intents, routes, compliance, risk, approvals, txns, audit) |
 | [`docs/state-machine.md`](docs/state-machine.md) | `CREATED → … → SETTLED/FAILED` payment lifecycle |
+| [`docs/ownership.md`](docs/ownership.md) | **Sui ownership model** — user ownership, authz, records, receipts as Sui-owned state |
 | [`docs/api-contracts.md`](docs/api-contracts.md) | Internal module interfaces + HTTP API + event contracts |
 | [`docs/environment.md`](docs/environment.md) | Environment-variable spec + dev/testnet/mainnet matrix |
 | [`docs/integration-strategy.md`](docs/integration-strategy.md) | Sui / Thetanuts / market-data / screening: mock → real strategy |
@@ -80,14 +84,25 @@ skills/               reusable skill pack (safety + architecture guidance)
   `audit-trail`, and `fintech-system-architecture` skills are the governing
   design rules for MOVA.
 
-## Quick start (Phase 0)
+## Quick start
 
 ```bash
-npm install            # installs workspace deps (zod for config validation)
-npm run typecheck      # type-checks all foundation packages
+npm install            # installs workspace deps
+npm run typecheck      # type-checks all packages (incl. web)
+npm run test -w @mova/wallet   # wallet safety-boundary + ownership tests
+cd apps/web && cp .env.local.example .env.local  # web env (defaults: testnet)
+npm run dev -w @mova/web      # wallet-connected app shell
 ```
+
+> The web app includes a dev-only **Demo Wallet** (no browser extension needed) so
+> the connect → sign → ownership → approval → simulated-execution flow can be
+> exercised end-to-end. Disable with `NEXT_PUBLIC_ENABLE_DEMO_WALLET=false`.
 
 ## Status
 
-**Phase 0 in progress** — foundation established. See `docs/roadmap.md` for the
-path to feature implementation.
+- **Phase 0 — foundation**: complete (docs, types, core, config, logger, integrations, QR).
+- **Phase 1 (wallet, ownership & app shell)**: complete — `@mova/wallet`, `docs/ownership.md`,
+  `contracts/mova` ownership blueprint, and the `apps/web` wallet-connected shell. Payment
+  *execution* stays for later phases (settlement is simulated, `txDigest = null`).
+- Next: Phase 1 core pipeline (Supabase backend + deterministic engines) then Phase 2 real Sui
+  settlement. See `docs/roadmap.md`.
