@@ -95,7 +95,7 @@ approval code from inside the LLM reasoning step."
 **When to use.** Anywhere the LLM feeds a downstream system: intent parsing, classification,
 risk explanation, extraction, summarization of structured records.
 
-**Why it exists / problem solved.** Free-text output is unparsable and unvalidatable.
+**Why it exists / problem solved.*x* Free-text output is unparsable and unvalidatable.
 Structured output guarantees the downstream code can consume results without fragile string parsing.
 
 **Core concepts.** JSON Schema; function/tool calling; typed responses; strict mode;

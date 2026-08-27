@@ -1,0 +1,8 @@
+{
+  "simulated_watchlist": [
+    { "name": "SIMULATED SANCTIONED ENTITY", "identifier": null },
+    { "name": null, "identifier": "0x00000000000000000000000000000000000000dEaD" }
+  ],
+  "version": "sim-2026.08.27",
+  "note": "Simulated sanctions data for the deterministic mock screening provider. Not a real regulatory list."
+}

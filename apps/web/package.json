@@ -1,0 +1,8 @@
+{
+  "name": "@mova/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MOVA frontend (Next.js + React + Tailwind) — implemented in Phase 1. Placeholder for Phase 0.",
+  "scripts": {}
+}

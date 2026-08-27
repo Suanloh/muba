@@ -1,0 +1,27 @@
+{
+  "name": "mova",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MOVA — AI-native autonomous payment agent (Phase 0 foundation).",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "smoke": "tsx scripts/phase0-smoke.ts"
+  },
+  "devDependencies": {
+    "@mysten/sui": "^2.27.0",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.23.12",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
