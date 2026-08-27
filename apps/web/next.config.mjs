@@ -7,7 +7,9 @@ const nextConfig = {
     "@mova/types",
     "@mova/config",
     "@mova/logger",
+    "@mova/core",
     "@mova/wallet",
+    "@mova/ai",
   ],
   webpack: (config) => {
     // The MOVA packages import with `.js` specifiers (TS convention) but ship

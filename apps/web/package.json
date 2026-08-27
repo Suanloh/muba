@@ -12,7 +12,9 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@mova/ai": "*",
     "@mova/config": "*",
+    "@mova/core": "*",
     "@mova/logger": "*",
     "@mova/types": "*",
     "@mova/wallet": "*",

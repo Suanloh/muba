@@ -29,14 +29,29 @@ export function TransactionHistory() {
                     {r.state}
                   </Badge>
                   {r.settlement?.simulated && <Badge tone="violet">simulated</Badge>}
+                  {r.settlement && !r.settlement.simulated && <Badge tone="green">real on-chain</Badge>}
                 </div>
                 <p className="mt-0.5 truncate text-xs text-slate-500">
                   {formatMoney(r.amount)} → {shortAddress(r.recipient.value, 8, 6)}
                   {r.approval?.decision === "APPROVE" ? " · approved" : ""}
                 </p>
+                {r.settlement?.error && (
+                  <p className="mt-0.5 text-[11px] text-amber-600">{r.settlement.error}</p>
+                )}
               </div>
               <div className="text-right">
-                <p className="font-mono text-xs text-slate-700">{r.settlement?.txDigest ?? (r.settlement ? "no digest (simulated)" : "—")}</p>
+                {r.settlement?.txDigest ? (
+                  <a
+                    href={`https://suiscan.xyz/testnet/tx/${r.settlement.txDigest}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-mono text-xs text-sky-600 underline decoration-dotted hover:text-sky-700"
+                  >
+                    {shortAddress(r.settlement.txDigest, 10, 6)}
+                  </a>
+                ) : (
+                  <p className="font-mono text-xs text-slate-700">{r.settlement ? "no digest (simulated)" : "—"}</p>
+                )}
                 {receipt && <p className="mt-0.5 text-[11px] text-emerald-600">receipt {shortId(receipt.id, 10)}</p>}
               </div>
             </div>

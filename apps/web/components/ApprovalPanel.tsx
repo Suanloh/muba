@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useAppStore } from "@/lib/store/app-store";
 import { useMovaWallet } from "@/lib/wallet/mova-wallet-context";
+import { WEB_SETTLEMENT_MODE } from "@/lib/wallet/networks";
 import { formatMoney, shortId } from "@/lib/pipeline/format";
 import { Badge, Button, Card } from "./ui";
 
@@ -68,13 +69,35 @@ export function ApprovalPanel() {
         {approved && (
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
             Approved. A wallet-scoped <span className="font-medium">PaymentAuthz</span> was issued. The next step
-            requires the wallet owner to authorize execution (signature), which then runs a simulated settlement.
+            requires the wallet owner to authorize execution (signature), which then{" "}
+            {WEB_SETTLEMENT_MODE === "real"
+              ? "attempts a REAL on-chain settlement (falls back to simulated if the wallet can't fund/submit)."
+              : "runs a simulated settlement."}
           </div>
         )}
         {executed && (
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
-            Settled (simulated). A receipt was issued to the owning address. No real value moved — real Sui
-            settlement arrives in Phase 2.
+            {record.settlement?.simulated === false && record.settlement?.txDigest ? (
+              <>
+                Settled <span className="font-medium">on-chain (real testnet)</span> — digest{" "}
+                <a
+                  href={`https://suiscan.xyz/testnet/tx/${record.settlement.txDigest}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-sky-700 underline decoration-dotted"
+                >
+                  {record.settlement.txDigest.slice(0, 18)}…
+                </a>
+                . A receipt was issued to the owning address.
+              </>
+            ) : record.settlement?.error ? (
+              <>
+                Settled (simulated fallback). <span className="text-amber-700">{record.settlement.error}</span>{" "}
+                A receipt was issued.
+              </>
+            ) : (
+              <>Settled (simulated). A receipt was issued to the owning address. No real value moved.</>
+            )}
           </div>
         )}
         {failed && (
@@ -102,7 +125,7 @@ export function ApprovalPanel() {
               disabled={disabled || busy !== null || !connection.account}
               onClick={() => void run("execute")}
             >
-              {busy === "execute" ? "Authorizing & settling…" : "Authorize & execute (simulated)"}
+              {busy === "execute" ? "Authorizing & settling…" : WEB_SETTLEMENT_MODE === "real" ? "Authorize & execute (real)" : "Authorize & execute (simulated)"}
             </Button>
           )}
         </div>

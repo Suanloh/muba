@@ -45,11 +45,12 @@ docs/                 Phase 0 blueprint + ownership model (start here)
 packages/types        shared domain models + payment state machine
 packages/config       env schema + dev/testnet/mainnet network configs
 packages/logger       structured logging + error conventions
-packages/core         deterministic engine contracts + state-machine runner
+packages/core         deterministic engine contracts + state-machine runner + NL validator
 packages/qr           local EMVCo QR decoder (deterministic, no external call)
 packages/integrations sponsor provider interfaces + deterministic mocks
 packages/wallet       Sui ownership layer: gate, authz, network, provider abstraction
-apps/web              Next.js wallet-connected app shell (Phase 1)
+packages/ai           NL payment parser (Phase 2) — proposal-only, no execution
+apps/web              Next.js wallet-connected app shell + natural-language payment chat
 supabase/             backend platform: Edge Functions, Auth, Realtime, Postgres
 contracts/            Sui Move package — ownership blueprint (mova_owned.move), deploy in Phase 2
 skills/               reusable skill pack (safety + architecture guidance)
@@ -63,6 +64,7 @@ skills/               reusable skill pack (safety + architecture guidance)
 | [`docs/data-model.md`](docs/data-model.md) | Entities & relationships (users, wallets, intents, routes, compliance, risk, approvals, txns, audit) |
 | [`docs/state-machine.md`](docs/state-machine.md) | `CREATED → … → SETTLED/FAILED` payment lifecycle |
 | [`docs/ownership.md`](docs/ownership.md) | **Sui ownership model** — user ownership, authz, records, receipts as Sui-owned state |
+| [`docs/nl-payments.md`](docs/nl-payments.md) | **Natural-language payments (Phase 2)** — NL → structured intent → validation → user confirmation |
 | [`docs/api-contracts.md`](docs/api-contracts.md) | Internal module interfaces + HTTP API + event contracts |
 | [`docs/environment.md`](docs/environment.md) | Environment-variable spec + dev/testnet/mainnet matrix |
 | [`docs/integration-strategy.md`](docs/integration-strategy.md) | Sui / Thetanuts / market-data / screening: mock → real strategy |
@@ -104,5 +106,15 @@ npm run dev -w @mova/web      # wallet-connected app shell
 - **Phase 1 (wallet, ownership & app shell)**: complete — `@mova/wallet`, `docs/ownership.md`,
   `contracts/mova` ownership blueprint, and the `apps/web` wallet-connected shell. Payment
   *execution* stays for later phases (settlement is simulated, `txDigest = null`).
-- Next: Phase 1 core pipeline (Supabase backend + deterministic engines) then Phase 2 real Sui
-  settlement. See `docs/roadmap.md`.
+- **Phase 1b / Phase 2 — natural-language payments**: complete — the chat interface turns free
+  text into structured, deterministic payment intents, validates them, explains what it
+  understood, and requires an explicit human confirmation before handing the intent to the
+  pipeline. `@mova/ai` (parser, proposal-only) + `@mova/core` (`IntentValidator`) +
+  `ChatPaymentInterface`. See `docs/nl-payments.md`.
+- **Phase 2 — real Sui settlement (testnet)**: in progress — `SuiSettlementProvider`
+  (`@mova/integrations`) settles native SUI on testnet with a REAL confirmed digest
+  (`scripts/settle-real.ts`), and the web execute path attempts a real on-chain transfer via
+  the connected wallet (gated) with an honest simulated fallback. Remaining: the custom Move
+  smart-wallet contract (needs the Sui CLI) and mainnet validation. See `docs/roadmap.md`.
+- Next: Phase 1 core pipeline (Supabase backend + deterministic engines), then the Move smart-
+  wallet contract + mainnet validation. See `docs/roadmap.md`.

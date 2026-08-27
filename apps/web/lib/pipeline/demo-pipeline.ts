@@ -395,10 +395,21 @@ export function simulateAiAutoExecute(
  * Gated execution (Phase 1): gate → wallet authz (signature) → simulated
  * settlement. No real value moves. Returns the settled record + receipt.
  */
+export interface RealSettlementAttempt {
+  digest: string | null;
+  error: string | null;
+}
+
+/**
+ * Execute a payment. When `ctx.submitReal` is provided (real settlement mode),
+ * the settlement attempts a REAL on-chain transfer through the connected
+ * wallet; on success it records a real digest with `simulated: false`, on
+ * failure it falls back to SIMULATED and records the reason honestly.
+ */
 export async function executeFlow(
   record: PaymentRecord,
   wallet: Pick<MovaWalletProvider, "signPersonalMessage">,
-  ctx: { networkMatches: boolean; now?: number },
+  ctx: { networkMatches: boolean; now?: number; submitReal?: (record: PaymentRecord) => Promise<RealSettlementAttempt> },
 ): Promise<FlowResult> {
   const now = ctx.now ?? Date.now();
   const verdict = checkGateForRecord(record, {
@@ -434,14 +445,43 @@ export async function executeFlow(
     }),
   );
 
-  const settlement: PaymentSettlement = settlementOutcome({
-    status: "SIMULATED",
-    simulated: true,
-    txDigest: null, // honest mock — never fabricate a digest
-    error: null,
-    signedBy: sig.address,
-    signedAt: sig.signedAt,
-  });
+  // Real settlement attempt (gated + approved + wallet authz already done).
+  let settlement: PaymentSettlement;
+  let realSettled = false;
+  if (ctx.submitReal) {
+    const real = await ctx.submitReal(record);
+    if (real.digest) {
+      realSettled = true;
+      settlement = settlementOutcome({
+        status: "CONFIRMED",
+        simulated: false,
+        txDigest: real.digest,
+        error: null,
+        signedBy: sig.address,
+        signedAt: sig.signedAt,
+      });
+    } else {
+      settlement = settlementOutcome({
+        status: "SIMULATED",
+        simulated: true,
+        txDigest: null, // honest fallback — never fabricate a digest
+        error: real.error
+          ? `REAL settlement failed (${real.error}) — fell back to SIMULATED`
+          : "REAL settlement failed — fell back to SIMULATED",
+        signedBy: sig.address,
+        signedAt: sig.signedAt,
+      });
+    }
+  } else {
+    settlement = settlementOutcome({
+      status: "SIMULATED",
+      simulated: true,
+      txDigest: null, // honest mock — never fabricate a digest
+      error: null,
+      signedBy: sig.address,
+      signedAt: sig.signedAt,
+    });
+  }
 
   const settled = applyTransition(
     { ...executing.record, settlement },
@@ -450,10 +490,11 @@ export async function executeFlow(
   );
   const finalRecord = settled.ok ? settled.record : executing.record;
   events.push(
-    audit(record.correlationId, record.id, "SETTLED", { type: "SYSTEM", id: "simulated-settlement" }, "EXECUTING", "SETTLED", true, {
-      simulated: true,
-      txDigest: null,
+    audit(record.correlationId, record.id, "SETTLED", { type: "SYSTEM", id: realSettled ? "sui-settlement" : "simulated-settlement" }, "EXECUTING", "SETTLED", !realSettled, {
+      simulated: !realSettled,
+      txDigest: settlement.txDigest,
       signedBy: sig.address,
+      ...(realSettled ? { real: true } : {}),
     }),
   );
 
@@ -464,8 +505,8 @@ export async function executeFlow(
     recipient: record.recipient.value,
     network: record.network,
     state: finalRecord.state,
-    txDigest: null,
-    simulated: true,
+    txDigest: settlement.txDigest,
+    simulated: !realSettled,
   });
 
   return { record: finalRecord, events, receipt };

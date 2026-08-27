@@ -1,3 +1,6 @@
+// The owned objects here are intentionally transferred to the sender
+// (that IS the ownership model), so the self-transfer lint is not applicable.
+#[allow(lint(self_transfer))]
 /// MOVA — Sui-owned payment state (ownership blueprint, Phase 1).
 ///
 /// This module defines how MOVA represents payment-related state as Sui-owned

@@ -46,3 +46,14 @@ export function defaultDappNetwork(): DappNetwork {
 
 export const ENABLE_DEMO_WALLET =
   (process.env.NEXT_PUBLIC_ENABLE_DEMO_WALLET ?? "true") === "true";
+
+/**
+ * Web settlement mode:
+ * - "real" (default) — attempts a REAL on-chain settlement through the
+ *   connected wallet when the flow is approved; falls back to simulated (with
+ *   the reason recorded) when the wallet can't submit (e.g. no testnet gas).
+ * - "simulated" — always simulated (deterministic demo, no chain interaction).
+ * Set NEXT_PUBLIC_SETTLEMENT_MODE=simulated to force the deterministic demo.
+ */
+export const WEB_SETTLEMENT_MODE: "simulated" | "real" =
+  process.env.NEXT_PUBLIC_SETTLEMENT_MODE === "simulated" ? "simulated" : "real";

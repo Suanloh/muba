@@ -33,6 +33,28 @@ Wallet-first milestone (see [`docs/ownership.md`](ownership.md)):
   failed wallet ops handled, no AI instruction bypasses approval. Settlement = simulated
   (no fake digests). Typecheck + wallet tests green.
 
+## Phase 1b — Natural-language payment & intent parsing ✅
+
+Conversational payment interface (see [`docs/nl-payments.md`](nl-payments.md)):
+
+- **`@mova/ai`** (new, implemented): NL → structured intent parser — deterministic
+  slot extraction, optional schema-constrained LLM structured output
+  (proposal-only), lightweight session conversation context, follow-up merge +
+  correction detection, explanation generation.
+- **`@mova/core`** (extended): deterministic `IntentValidator` implementing the
+  Phase 2 validation matrix (missing/invalid amount, missing/unsupported
+  currency, missing/ambiguous recipient, invalid address, unsupported network,
+  conflicting instructions, unsupported payment method). Recomputes money —
+  the AI never computes `Money`.
+- **`apps/web`**: `ChatPaymentInterface` — chat input, structured intent card,
+  validation issues, MOVA explanation, **user confirmation gate**, then hands
+  the confirmed intent to the existing pipeline (approval → wallet authz →
+  simulated settlement).
+- **Safety:** the AI is a parser/assistant only — never a transaction executor,
+  compliance authority, or final payment authority.
+- **DoD:** NL → Structured Intent → Validation → User Confirmation works in the
+  UI; typecheck + tests green (`@mova/core` 16, `@mova/ai` 33).
+
 ## Phase 1 — Core pipeline (Supabase backend, simulated settlement)
 
 - **Supabase** (`supabase/`): Edge Functions per `api-contracts.md`;
@@ -55,15 +77,35 @@ Wallet-first milestone (see [`docs/ownership.md`](ownership.md)):
 
 ## Phase 2 — Real Sui settlement (testnet → mainnet target)
 
-- **Move package** (`contracts/`): smart wallet + executor authorization,
-  replay protection, safe token handling (patterns from `SMART_WALLET.md`,
-  ported to Move; Sui owned objects).
-- **`SuiSettlementProvider`**: programmable transaction blocks from explicit,
-  validated params; confirmation watcher (`EXECUTING → SETTLED`).
-- Deploy to devnet, then testnet; `SETTLEMENT_MODE=real` in testnet.
-- **DoD:** real testnet digests confirmed; audit records real `simulated: false`;
-  `mainnet` boundary still refuses mocks; mainnet config validated for the
-  production target.
+**In progress — native SUI settlement on testnet is DONE and verified.**
+
+- **`SuiSettlementProvider`** (`packages/integrations/src/sui-settlement.ts`): ✅
+  builds a PTB from explicit validated params, dry-runs (simulate), signs with
+  the custodial key, submits via gRPC, waits for confirmation. Returns a REAL
+  `txDigest`, `simulated: false`.
+- **Verified on testnet**: ✅ `scripts/settle-real.ts` settled 0.1 SUI with a
+  REAL CONFIRMED digest and the recipient balance increased on-chain.
+- **Web execute path**: ✅ attempts a REAL on-chain transfer through the
+  connected wallet (`dAppKit.signAndExecuteTransaction`, gated by
+  `WalletExecutionGate`) when `NEXT_PUBLIC_SETTLEMENT_MODE=real` (default);
+  falls back to SIMULATED with the reason recorded when the wallet can't
+  submit (e.g. the in-page Demo Wallet has no testnet gas / no execute
+  support). A funded testnet wallet settles for real in the browser.
+- **Remaining:**
+  - **Move package** (`contracts/`): smart wallet + executor authorization,
+    replay protection, safe token handling (patterns from `SMART_WALLET.md`,
+    ported to Move; Sui owned objects). The **Sui CLI is now installed**
+    (`sui 1.78.1`) and `contracts/mova` compiles + unit-tests cleanly
+    (`sui move build`/`test` → exit 0); the smart-wallet execution package
+    still needs to be written and published (`sui client publish`), which
+    needs a `sui client` account + testnet gas.
+  - TOKEN_TRANSFER payloads in `SuiSettlementProvider` (native SUI transfer
+    only so far).
+  - `mainnet` boundary validation (mocks already refused; real settlement must
+    be exercised against a funded mainnet wallet).
+- **DoD (partial):** real testnet digests confirmed ✅; audit records real
+  `simulated: false` ✅; `mainnet` boundary still refuses mocks ✅; mainnet
+  config validated for the production target (pending).
 
 ## Phase 3 — Real Thetanuts V4 / Optionbook integration
 

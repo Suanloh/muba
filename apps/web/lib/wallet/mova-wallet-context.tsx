@@ -42,6 +42,7 @@ import {
   type WalletAccount,
   type WalletConnectionState,
 } from "@mova/wallet";
+import type { Transaction } from "@mysten/sui/transactions";
 import type { UiWalletAccount } from "@wallet-standard/ui";
 import {
   dappNetworkToMova,
@@ -61,6 +62,14 @@ export interface MovaWalletContextValue {
   requestOwnershipProof: () => Promise<OwnershipProof>;
   verifyOwnershipProof: (proof: OwnershipProof) => Promise<boolean>;
   signMessage: (message: string) => Promise<SignatureResult>;
+  /**
+   * Submit a REAL transaction through the connected wallet. The wallet user
+   * must approve the signature. Only called after the deterministic gate
+   * passes. Returns a real digest when executed, simulated:false on success.
+   */
+  executeTransaction: (
+    transaction: Transaction,
+  ) => Promise<{ ok: boolean; digest: string | null; simulated: boolean; error: string | null }>;
   provider: MovaWalletProvider | null;
   error: string | null;
   clearError: () => void;
@@ -173,6 +182,26 @@ export function MovaWalletProvider({ children }: { children: React.ReactNode }) 
     [account, dAppKit],
   );
 
+  const executeTransaction = useCallback(
+    async (transaction: Transaction) => {
+      if (!account) {
+        return { ok: false, digest: null, simulated: false, error: "No wallet connected." };
+      }
+      if (!network.matches) {
+        return { ok: false, digest: null, simulated: false, error: "Wallet network does not match the MOVA expected network." };
+      }
+      try {
+        const res = await dAppKit.signAndExecuteTransaction({ transaction });
+        const digest =
+          res.$kind === "Transaction" ? res.Transaction.digest : res.FailedTransaction.digest;
+        return { ok: true, digest, simulated: false, error: null };
+      } catch (err) {
+        return { ok: false, digest: null, simulated: false, error: messageFromError(err) };
+      }
+    },
+    [account, network.matches, dAppKit],
+  );
+
   const requestOwnershipProof = useCallback(async (): Promise<OwnershipProof> => {
     if (!account) {
       throw new MovaError(ErrorCode.WALLET_NOT_CONNECTED, "Connect a wallet first.");
@@ -245,11 +274,12 @@ export function MovaWalletProvider({ children }: { children: React.ReactNode }) 
       requestOwnershipProof,
       verifyOwnershipProof,
       signMessage,
+      executeTransaction,
       provider,
       error,
       clearError,
     }),
-    [connection, network, appNetwork, wallets, connect, disconnect, switchNetwork, requestOwnershipProof, verifyOwnershipProof, signMessage, provider, error, clearError],
+    [connection, network, appNetwork, wallets, connect, disconnect, switchNetwork, requestOwnershipProof, verifyOwnershipProof, signMessage, executeTransaction, provider, error, clearError],
   );
 
   return <MovaWalletContext.Provider value={value}>{children}</MovaWalletContext.Provider>;

@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@mova/logger": "*",
-    "@mova/types": "*"
+    "@mova/types": "*",
+    "@mysten/sui": "^2.27.0"
   }
 }

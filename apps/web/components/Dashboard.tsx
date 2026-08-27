@@ -2,7 +2,7 @@
 import { WalletConnectButton } from "./WalletConnectButton";
 import { NetworkBanner } from "./NetworkBanner";
 import { WalletStatusCard } from "./WalletStatusCard";
-import { PaymentComposer } from "./PaymentComposer";
+import { ChatPaymentInterface } from "./ChatPaymentInterface";
 import { PaymentFlowTimeline } from "./PaymentFlowTimeline";
 import { ApprovalPanel } from "./ApprovalPanel";
 import { SafetyBoundaryCard } from "./SafetyBoundaryCard";
@@ -31,7 +31,7 @@ export function Dashboard() {
 
       <main className="mx-auto grid max-w-6xl gap-6 px-4 py-6 lg:grid-cols-[1fr_360px]">
         <div className="space-y-6">
-          <PaymentComposer />
+          <ChatPaymentInterface />
           <PaymentFlowTimeline />
           <ApprovalPanel />
           <SafetyBoundaryCard />

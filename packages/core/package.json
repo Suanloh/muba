@@ -9,10 +9,14 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/*.test.ts"
   },
   "dependencies": {
     "@mova/logger": "*",
     "@mova/types": "*"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.12"
   }
 }

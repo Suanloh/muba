@@ -24,7 +24,8 @@ import type {
   SuiAddress,
 } from "@mova/wallet";
 import { useMovaWallet } from "@/lib/wallet/mova-wallet-context";
-import { EXPECTED_NETWORK } from "@/lib/wallet/networks";
+import { EXPECTED_NETWORK, WEB_SETTLEMENT_MODE } from "@/lib/wallet/networks";
+import { buildTransferTransaction } from "@/lib/pipeline/real-settlement";
 import {
   approveFlow,
   checkGateForRecord,
@@ -33,6 +34,7 @@ import {
   rejectFlow,
   runToAwaitingApproval,
   simulateAiAutoExecute,
+  type RealSettlementAttempt,
 } from "@/lib/pipeline/demo-pipeline";
 
 export interface AppNotification {
@@ -62,7 +64,7 @@ interface AppStoreValue {
 const AppStoreContext = createContext<AppStoreValue | null>(null);
 
 export function AppStoreProvider({ children }: { children: React.ReactNode }) {
-  const { connection, network, provider } = useMovaWallet();
+  const { connection, network, provider, executeTransaction } = useMovaWallet();
   const [records, setRecords] = useState<PaymentRecord[]>([]);
   const [receipts, setReceipts] = useState<PaymentReceipt[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -192,14 +194,43 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
         throw err;
       }
 
-      const res = await executeFlow(record, provider, { networkMatches });
+      // Real settlement: build a native-SUI transfer PTB from the validated
+      // record and submit through the connected wallet (gated). Falls back to
+      // simulated with an honest note when the wallet can't submit.
+      const realSubmit =
+        WEB_SETTLEMENT_MODE === "real"
+          ? async (rec: PaymentRecord): Promise<RealSettlementAttempt> => {
+              try {
+                const tx = buildTransferTransaction(rec, rec.ownerAddress);
+                const res = await executeTransaction(tx);
+                if (res.ok && res.digest) return { digest: res.digest, error: null };
+                return { digest: null, error: res.error ?? "wallet could not execute the transaction" };
+              } catch (err) {
+                return { digest: null, error: err instanceof Error ? err.message : String(err) };
+              }
+            }
+          : undefined;
+
+      const res = await executeFlow(record, provider, { networkMatches, submitReal: realSubmit });
       updateRecord(res.record);
       appendAudit(res.events);
       if (res.receipt) addReceipt(res.receipt);
-      notify("success", "Settled (simulated)", `Record ${record.id.slice(0, 12)}… settled via wallet authz. No real value moved.`);
+
+      const settled = res.record.settlement;
+      if (settled?.simulated === false) {
+        notify(
+          "success",
+          "Settled (real testnet)",
+          `Record ${record.id.slice(0, 12)}… settled on-chain. Digest ${settled.txDigest?.slice(0, 14)}….`,
+        );
+      } else if (settled?.error) {
+        notify("warning", "Settled (simulated fallback)", settled.error);
+      } else {
+        notify("success", "Settled (simulated)", `Record ${record.id.slice(0, 12)}… settled via wallet authz. No real value moved.`);
+      }
       return res.record;
     },
-    [records, provider, network.matches, updateRecord, appendAudit, addReceipt, notify],
+    [records, provider, network.matches, executeTransaction, updateRecord, appendAudit, addReceipt, notify],
   );
 
   const attemptAiAutoExecute = useCallback(

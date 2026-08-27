@@ -293,7 +293,9 @@
       "@mova/types",
       "@mova/config",
       "@mova/logger",
-      "@mova/wallet"
+      "@mova/core",
+      "@mova/wallet",
+      "@mova/ai"
     ],
     "turbopack": {
       "root": "C:\\Users\\zisuan\\Desktop\\me\\hakcathon ss\\muba"
