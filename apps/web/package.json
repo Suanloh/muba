@@ -15,6 +15,7 @@
     "@mova/ai": "*",
     "@mova/config": "*",
     "@mova/core": "*",
+    "@mova/integrations": "*",
     "@mova/logger": "*",
     "@mova/qr": "*",
     "@mova/types": "*",

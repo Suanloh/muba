@@ -114,13 +114,63 @@ Conversational payment interface (see [`docs/nl-payments.md`](nl-payments.md)):
   movement). Config via `THETANUTS_VERSION=v4` / `THETANUTS_OPTIONBOOK_ADDRESS`.
 - **DoD:** hedge quote flows into `RiskAssessment`; executed hedges audited.
 
-## Phase 4 — Hardening & production readiness
+## Phase 4 — Route Discovery & Mathematical Route Optimization ✅
+
+Deterministic routing engine (see [`docs/routing.md`](routing.md)):
+
+- **`@mova/types`** (extended): transparent routing model — `RouteLegKind`,
+  `RouteCostBreakdown`, `RouteSummary`, `RouteRisk`/`RouteRiskFactor`,
+  `RouteFactorScores`, `RoutePreferenceWeights`, `RouteComparisonRow`,
+  `RouteSavings`, `RouteOptimizationResult`; `Route` now carries the full
+  candidate data + optimizer scores.
+- **`@mova/core`** (`src/routing/`): `RouteDiscoveryEngine` (enumerates
+  direct / conversion / fiat routes across `SUI_CHAIN`, `MOVA_DEX`,
+  `MOVA_ONRAMP`, `MOVA_FIAT_RAIL`, `SUI_SETTLEMENT`, prices them from
+  `MarketDataProvider` quotes with integer math, skips unpriceable routes);
+  `RouteOptimizerEngine` (min-max factor normalization + weighted composite
+  score; COST/SPEED/RELIABILITY profiles or explicit user weights; transparent
+  `selectionReason`; comparison rows + savings); `RouteEngine` facade
+  (`compute(intent, parsed, criterion, options?)`).
+- **Deterministic**: no LLM; scores are pure functions of the candidate set
+  and the weights; identical input → identical output.
+- **DoD:** `RouteEngine.compute` returns ranked routes + comparison + savings;
+  typecheck + 39 core tests green (23 routing).
+
+## Phase 5 — Hardening & production readiness
 
 - Real screening/market-data providers; monitoring & alerting; retention.
 - `mainnet` config exercised against a funded wallet (dry-run simulations).
 - Load, failure-injection, and audit-integrity tests.
 - **DoD:** `mainnet` boots only with real providers; every gate enforced;
   rollback path documented.
+
+## Phase 6 — Risk Assessment & Thetanuts Hedging ✅
+
+Deterministic financial risk + hedge evaluation feeding MOVA's **final payment
+recommendation** (see [`docs/risk-hedging.md`](risk-hedging.md)):
+
+- **`@mova/core` (`src/risk/`)**: `RiskEngine` (5 signals — asset volatility,
+  FX exposure, route risk, liquidity, settlement risk — score 0–100, band
+  LOW/MEDIUM/HIGH/CRITICAL, decision PROCEED/REVIEW/BLOCK); `HedgingEngine`
+  (hedge need, instrument, premium, exposure reduction, **route vs route+hedge**
+  comparison); `HedgedRouteEngine` facade → `PaymentRecommendation`
+  (route + risk + hedge + total cost + explanation). Deterministic VaR math
+  (z-score table, integer-safe) in `volatility.ts`.
+- **`@mova/types`**: `VolatilitySnapshot`, `HedgeImpact`, `RouteHedgeComparison`,
+  `PaymentRecommendation`; `HedgeDecision` / `HedgeDataSource` enums; `RiskSignal`
+  gained `note`.
+- **`@mova/integrations`**: `ThetanutsHedgingProvider` (REAL — V4 Optionbook
+  via the SDK, ETH/BTC, live implied vol + premium; honestly reports
+  `ERR_INTEGRATION_UNAVAILABLE` when unreachable/unsupported — never fakes a
+  live quote) + `StaticThetanutsHedgingProvider` (dev-only cached table,
+  `simulated: true`, `STATIC_DEV`) + `VolatilityProvider`/`StaticVolatilityProvider`.
+- **`apps/web`**: `RiskAssessmentPanel` — risk score/band, signal breakdown,
+  route-vs-route+hedge table, final recommendation; honest data-source labels;
+  wired into the demo pipeline (`riskViews` in the store).
+- **Demo**: `npm run risk:demo` (`scripts/risk-hedge-demo.ts`).
+- **DoD:** risk + hedge feed the final recommendation; deterministic + tested;
+  live-unavailable → honest UNAVAILABLE fallback (never pretend mock is live);
+  typecheck + full suite green (core 55, integrations 10, web build clean).
 
 ## Ongoing (every phase)
 

@@ -116,20 +116,34 @@ interpretation but never overwrites them.
 | `raw` | `string` | Scanned payload, retained for audit |
 | `parseErrors` | `string[]` | CRC mismatch, malformed TLV, etc. |
 
-### `Route` (deterministic routing result)
+### `Route` (deterministic routing result — Phase 4)
+
+The routing model is fully transparent: every route carries its composition
+(`RouteSummary`), a per-leg breakdown, a `RouteCostBreakdown` (all figures in a
+common `quoteAsset`, default USDC, smallest units), labelled `RouteRisk`
+factors, and the optimizer's per-factor scores + selection math. See
+[`docs/routing.md`](routing.md) for the full engine spec.
 
 | Field | Type | Notes |
 | --- | --- | --- |
 | `id` / `paymentIntentId` | `string` | PK / FK |
-| `routeNo` | `number` | Candidate number within the intent |
-| `legs` | `RouteLeg[]` | Per-leg: from/to/asset/amount/provider/fee/estimatedTimeMs |
-| `totalFee`, `totalEstimatedCost` | `Money` | Smallest units |
-| `estimatedTimeMs` | `number` | |
-| `reliability` | `number` | Deterministic 0..1 |
-| `status` | `RouteStatus` | `CANDIDATE / SELECTED / REJECTED` |
-| `selectionScore` / `selectionReason` | `number` / `string` | From `RouteOptimizer` |
+| `routeNo` | `number` | Candidate number within the intent (1..N) |
+| `legs` | `RouteLeg[]` | `kind (CONVERSION/OFFCHAIN/ONCHAIN/SETTLEMENT)`, from/to/asset/amount/provider/fee/estimatedTimeMs, per-leg `reliability`/`liquidity`/`riskFactor`/`note` |
+| `summary` | `RouteSummary` | `sourceAsset`, `destinationAsset`, `hasConversion`, `conversionCount`, `hasOffchainLeg`, `hasOnchainLeg`, `settleOnSui`, `legOrder` |
+| `cost` | `RouteCostBreakdown` | `paymentFees` / `conversionCost` / `slippage` / `other` / `total` in `quoteAsset` |
+| `totalFee` | `Money` | Sum of all leg fees (== `cost.paymentFees`) |
+| `totalEstimatedCost` | `Money` | `cost.total` = fees + slippage |
+| `estimatedTimeMs` / `reliability` / `liquidity` | `number` | Time; product of leg reliability; min of leg liquidity |
+| `risk` | `RouteRisk` | `score` (0..1, lower safer) + labelled `factors[]` |
+| `status` | `RouteStatus` | `SELECTED / REJECTED` (after optimization) |
+| `selectionScore` / `selectionReason` | `number` / `string` | Weighted composite + the exact math |
+| `factorScores` | `RouteFactorScores` | `cost/speed/risk/reliability/liquidity` each 0..1 (1 = best) |
 
 `RouteCandidate` (from discovery, pre-ranking) is the input to the optimizer.
+`RouteOptimizationResult` adds `criterion`, effective `weights`,
+`comparison[]` (per-route rows for the comparison table) and `savings`
+(`RouteSavings`: cheapest / selected / most-expensive route, `premiumVsCheapest`,
+`estimatedSavings`, `selectedIsCheapest`, `explanation`).
 
 ### `ComplianceAssessment`
 

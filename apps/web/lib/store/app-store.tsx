@@ -36,6 +36,10 @@ import {
   simulateAiAutoExecute,
   type RealSettlementAttempt,
 } from "@/lib/pipeline/demo-pipeline";
+import {
+  assessPaymentRisk,
+  type RiskView,
+} from "@/lib/pipeline/risk-recommendation";
 
 export interface AppNotification {
   id: string;
@@ -51,6 +55,8 @@ interface AppStoreValue {
   notifications: AppNotification[];
   audit: AuditEvent[];
   activeRecordId: string | null;
+  /** recordId -> deterministic risk + hedge recommendation (Phase 6). */
+  riskViews: Record<string, RiskView>;
   setActiveRecordId: (id: string | null) => void;
   submitIntent: (rawText: string) => Promise<PaymentRecord>;
   approve: (recordId: string) => Promise<PaymentRecord>;
@@ -70,6 +76,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [audit, setAudit] = useState<AuditEvent[]>([]);
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null);
+  const [riskViews, setRiskViews] = useState<Record<string, RiskView>>({});
   const auditRef = useRef<AuditEvent[]>([]);
 
   const ownerAddress: SuiAddress | null =
@@ -124,6 +131,23 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       }
       setRecords((prev) => prev.map((r) => (r.id === record.id ? staged.record : r)));
       notify("info", "Awaiting approval", `${parsed.action} ${parsed.amount.amount} ${parsed.amount.asset} to ${parsed.recipient.value}`);
+
+      // Phase 6 — deterministic risk assessment + hedge evaluation feeding the
+      // final payment recommendation (routing → risk → route-vs-route+hedge).
+      if (!parsed.validated) return staged.record;
+      try {
+        const view = await assessPaymentRisk(staged.record);
+        setRiskViews((prev) => ({ ...prev, [record.id]: view }));
+        const rec = view.recommendation;
+        if (rec.hedged) {
+          notify("info", "Hedge recommended", `MOVA suggests a ${rec.hedge.strategy} via ${rec.hedge.dataSource} (risk ${rec.risk.band}, ${rec.risk.score}/100).`);
+        } else if (rec.risk.band === "HIGH" || rec.risk.band === "CRITICAL") {
+          notify("warning", `${rec.risk.band} risk`, `Financial risk ${rec.risk.score}/100 — review required before proceeding.`);
+        }
+      } catch (err) {
+        // Risk assessment is advisory; a failure must not block the demo flow.
+        notify("warning", "Risk assessment unavailable", err instanceof Error ? err.message : String(err));
+      }
       return staged.record;
     },
     [ownerAddress, appendAudit, notify],
@@ -248,6 +272,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     setNotifications([]);
     auditRef.current = [];
     setAudit([]);
+    setRiskViews({});
     setActiveRecordId(null);
   }, []);
 
@@ -258,6 +283,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       notifications,
       audit,
       activeRecordId,
+      riskViews,
       setActiveRecordId,
       submitIntent,
       approve,
@@ -267,7 +293,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       dismissNotification,
       clearAll,
     }),
-    [records, receipts, notifications, audit, activeRecordId, submitIntent, approve, reject, execute, attemptAiAutoExecute, dismissNotification, clearAll],
+    [records, receipts, notifications, audit, activeRecordId, riskViews, submitIntent, approve, reject, execute, attemptAiAutoExecute, dismissNotification, clearAll],
   );
 
   return <AppStoreContext.Provider value={value}>{children}</AppStoreContext.Provider>;

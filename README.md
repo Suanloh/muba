@@ -65,6 +65,7 @@ skills/               reusable skill pack (safety + architecture guidance)
 | [`docs/state-machine.md`](docs/state-machine.md) | `CREATED → … → SETTLED/FAILED` payment lifecycle |
 | [`docs/ownership.md`](docs/ownership.md) | **Sui ownership model** — user ownership, authz, records, receipts as Sui-owned state |
 | [`docs/nl-payments.md`](docs/nl-payments.md) | **Natural-language payments (Phase 2)** — NL → structured intent → validation → user confirmation |
+| [`docs/risk-hedging.md`](docs/risk-hedging.md) | **Risk assessment & Thetanuts hedging (Phase 6)** — deterministic risk + hedge → final payment recommendation |
 | [`docs/api-contracts.md`](docs/api-contracts.md) | Internal module interfaces + HTTP API + event contracts |
 | [`docs/environment.md`](docs/environment.md) | Environment-variable spec + dev/testnet/mainnet matrix |
 | [`docs/integration-strategy.md`](docs/integration-strategy.md) | Sui / Thetanuts / market-data / screening: mock → real strategy |
@@ -116,5 +117,10 @@ npm run dev -w @mova/web      # wallet-connected app shell
   (`scripts/settle-real.ts`), and the web execute path attempts a real on-chain transfer via
   the connected wallet (gated) with an honest simulated fallback. Remaining: the custom Move
   smart-wallet contract (needs the Sui CLI) and mainnet validation. See `docs/roadmap.md`.
+- **Phase 6 — risk assessment & Thetanuts hedging**: complete — deterministic `RiskEngine` +
+  `HedgingEngine` + `HedgedRouteEngine` feed MOVA's final payment recommendation (route vs
+  route+hedge); real Thetanuts V4 Optionbook provider (honest UNAVAILABLE fallback) + static
+  dev fallback; `RiskAssessmentPanel` in the web shell; `npm run risk:demo`. See
+  `docs/risk-hedging.md`.
 - Next: Phase 1 core pipeline (Supabase backend + deterministic engines), then the Move smart-
   wallet contract + mainnet validation. See `docs/roadmap.md`.

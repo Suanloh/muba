@@ -21,10 +21,14 @@ import type {
   ParsedIntent,
   ParsedIntentProposal,
   PaymentIntent,
+  PaymentRecommendation,
   QrDecoded,
   RiskAssessment,
   Route,
   RouteCandidate,
+  RouteHedgeComparison,
+  RouteOptimizationResult,
+  RoutePreferenceWeights,
   SelectionCriterion,
   SettlementTransaction,
   SimulationResult,
@@ -82,12 +86,22 @@ export interface RouteDiscovery {
   discover(intent: PaymentIntent, parsed: ParsedIntent): Promise<RouteCandidate[]>;
 }
 
-/** Deterministic, pure ranking of candidates -> Routes with selection score. */
+/**
+ * Deterministic, pure ranking of candidates → `RouteOptimizationResult`
+ * (ranked routes, selection score + reason, comparison rows and savings).
+ * `options.weights` lets a user supply explicit preference weights that
+ * override the criterion's default profile — never an AI-generated score.
+ */
 export interface RouteOptimizer {
   optimize(
     candidates: RouteCandidate[],
     criterion: SelectionCriterion,
-  ): { routes: Route[]; selected: Route | null };
+    options?: {
+      weights?: RoutePreferenceWeights;
+      paymentIntentId?: string;
+      now?: number;
+    },
+  ): RouteOptimizationResult;
 }
 
 // ---------------------------------------------------------------------------
@@ -107,17 +121,42 @@ export interface PortfolioSnapshot {
   timestamp: number;
 }
 
-export interface RiskEngine {
+/**
+ * Phase 6 — deterministic financial risk assessment. Implemented by the
+ * `RiskEngine` class in `src/risk/` (a portfolio snapshot is optional and not
+ * required for the Phase 6 model).
+ */
+export interface FinancialRiskEngine {
   assess(
     intent: PaymentIntent,
     route: Route,
-    portfolio: PortfolioSnapshot,
+    portfolio?: PortfolioSnapshot,
   ): Promise<RiskAssessment>;
 }
 
-/** Deterministic hedging recommendation (wraps HedgingProvider). */
-export interface HedgingEngine {
-  recommend(parsed: ParsedIntent, risk: RiskAssessment): Promise<HedgingPlan>;
+/** Phase 6 — deterministic hedge evaluation. Implemented by `src/risk/`. */
+export interface HedgeEvaluator {
+  evaluate(
+    intent: PaymentIntent,
+    route: Route,
+    risk: RiskAssessment,
+  ): Promise<{
+    assessment: RiskAssessment;
+    plan: HedgingPlan;
+    comparison: RouteHedgeComparison;
+  }>;
+}
+
+/**
+ * Phase 6 — final payment recommendation facade (route + risk + hedge).
+ * Implemented by the `HedgedRouteEngine` class in `src/risk/`.
+ */
+export interface PaymentAdvisor {
+  compute(
+    intent: PaymentIntent,
+    parsed: ParsedIntent,
+    criterion: SelectionCriterion,
+  ): Promise<PaymentRecommendation>;
 }
 
 // ---------------------------------------------------------------------------

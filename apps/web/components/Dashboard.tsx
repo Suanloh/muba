@@ -6,6 +6,7 @@ import { ChatPaymentInterface } from "./ChatPaymentInterface";
 import { QrScanInterface } from "./QrScanInterface";
 import { PaymentFlowTimeline } from "./PaymentFlowTimeline";
 import { ApprovalPanel } from "./ApprovalPanel";
+import { RiskAssessmentPanel } from "./RiskAssessmentPanel";
 import { SafetyBoundaryCard } from "./SafetyBoundaryCard";
 import { TransactionHistory } from "./TransactionHistory";
 import { OwnershipPanel } from "./OwnershipPanel";
@@ -35,6 +36,7 @@ export function Dashboard() {
           <ChatPaymentInterface />
           <QrScanInterface />
           <PaymentFlowTimeline />
+          <RiskAssessmentPanel />
           <ApprovalPanel />
           <SafetyBoundaryCard />
           <TransactionHistory />

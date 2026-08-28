@@ -13,7 +13,9 @@
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
-    "smoke": "tsx scripts/phase0-smoke.ts"
+    "smoke": "tsx scripts/phase0-smoke.ts",
+    "routing:demo": "tsx scripts/routing-demo.ts",
+    "risk:demo": "tsx scripts/risk-hedge-demo.ts"
   },
   "devDependencies": {
     "@mysten/sui": "^2.27.0",
