@@ -1,22 +1,28 @@
 "use client";
+/**
+ * MOVA Phase 7 — Approval & Execution panel.
+ *
+ * Once the human approved the preview (in `PaymentPreviewPanel`), this panel
+ * is the "Authorize & execute" step: wallet authz (signature) → execution →
+ * Sui settlement. Nothing reaches EXECUTING without an APPROVE decision bound
+ * to the plan digest, and no record can execute twice (idempotency).
+ */
 import { useState } from "react";
+import { failureLabel, failureUserMessage } from "@mova/core";
 import { useAppStore } from "@/lib/store/app-store";
 import { useMovaWallet } from "@/lib/wallet/mova-wallet-context";
 import { WEB_SETTLEMENT_MODE } from "@/lib/wallet/networks";
 import { formatMoney, shortId } from "@/lib/pipeline/format";
 import { Badge, Button, Card } from "./ui";
 
-/**
- * Human approval interface (the gate before execution) + wallet-authz execute
- * step. Nothing reaches EXECUTING without an APPROVE decision.
- */
 export function ApprovalPanel() {
-  const { records, activeRecordId, approve, reject, execute } = useAppStore();
+  const { records, plans, activeRecordId, execute } = useAppStore();
   const { connection } = useMovaWallet();
-  const [busy, setBusy] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const record = records.find((r) => r.id === activeRecordId) ?? null;
+  const plan = record ? plans[record.id] : undefined;
   const connected = connection.status === "connected";
 
   if (!record) {
@@ -31,21 +37,21 @@ export function ApprovalPanel() {
   const approved = record.state === "APPROVED";
   const executed = record.state === "SETTLED";
   const failed = record.state === "FAILED";
-  const disabled = !connected;
+  const disabled = !connected || !plan;
 
-  const run = async (action: "approve" | "reject" | "execute") => {
-    setBusy(action);
+  const run = async () => {
+    setBusy(true);
     setError(null);
     try {
-      if (action === "approve") await approve(record.id);
-      else if (action === "reject") await reject(record.id);
-      else await execute(record.id);
+      await execute(record.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
   };
+
+  const failure = record.execution?.failure ?? null;
 
   return (
     <Card
@@ -53,23 +59,27 @@ export function ApprovalPanel() {
       subtitle={`${shortId(record.id)} · ${formatMoney(record.amount)} · to ${record.recipient.value}`}
     >
       <div className="space-y-3 text-sm">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs text-slate-500">State</span>
-          <Badge tone={failed ? "red" : awaiting ? "amber" : approved || executed ? "green" : "slate"}>
-            {record.state}
-          </Badge>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge tone={failed ? "red" : awaiting ? "amber" : approved || executed ? "green" : "slate"}>
+              {record.state}
+            </Badge>
+            {plan && <Badge tone="violet">plan {plan.spec.planDigest.slice(0, 10)}…</Badge>}
+          </div>
         </div>
 
         {awaiting && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-            This payment has passed validation, routing, compliance, and risk (simulated). It is now waiting for
-            an explicit human approval from the owning wallet. Without approval, execution is structurally refused.
+            This payment has passed validation, routing, compliance, and risk. Review the{" "}
+            <span className="font-medium">Payment preview</span> and approve it there — until then, execution is
+            structurally refused.
           </div>
         )}
         {approved && (
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
-            Approved. A wallet-scoped <span className="font-medium">PaymentAuthz</span> was issued. The next step
-            requires the wallet owner to authorize execution (signature), which then{" "}
+            Approved. A wallet-scoped <span className="font-medium">PaymentAuthz</span> bound to the plan digest was
+            issued. The next step requires the wallet owner to authorize execution (signature), which then{" "}
             {WEB_SETTLEMENT_MODE === "real"
               ? "attempts a REAL on-chain settlement (falls back to simulated if the wallet can't fund/submit)."
               : "runs a simulated settlement."}
@@ -92,8 +102,8 @@ export function ApprovalPanel() {
               </>
             ) : record.settlement?.error ? (
               <>
-                Settled (simulated fallback). <span className="text-amber-700">{record.settlement.error}</span>{" "}
-                A receipt was issued.
+                Settled (simulated fallback). <span className="text-amber-700">{record.settlement.error}</span> A
+                receipt was issued.
               </>
             ) : (
               <>Settled (simulated). A receipt was issued to the owning address. No real value moved.</>
@@ -102,36 +112,31 @@ export function ApprovalPanel() {
         )}
         {failed && (
           <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
-            This payment failed or was rejected and will never be executed.
+            {failure ? (
+              <>
+                <span className="font-semibold">{failureLabel(failure.code)}</span> — {failureUserMessage(failure)}
+              </>
+            ) : (
+              <>This payment failed or was rejected and will never be executed.</>
+            )}
           </div>
         )}
 
         {error && <p className="text-xs text-rose-600">{error}</p>}
 
-        <div className="flex flex-wrap gap-2">
-          {awaiting && (
-            <>
-              <Button variant="primary" disabled={disabled || busy !== null} onClick={() => void run("approve")}>
-                {busy === "approve" ? "Approving…" : "Approve payment"}
-              </Button>
-              <Button variant="danger" disabled={disabled || busy !== null} onClick={() => void run("reject")}>
-                Reject
-              </Button>
-            </>
-          )}
-          {approved && (
-            <Button
-              variant="primary"
-              disabled={disabled || busy !== null || !connection.account}
-              onClick={() => void run("execute")}
-            >
-              {busy === "execute" ? "Authorizing & settling…" : WEB_SETTLEMENT_MODE === "real" ? "Authorize & execute (real)" : "Authorize & execute (simulated)"}
-            </Button>
-          )}
-        </div>
+        {approved && (
+          <Button variant="primary" disabled={disabled || busy} onClick={() => void run()}>
+            {busy
+              ? "Authorizing & settling…"
+              : WEB_SETTLEMENT_MODE === "real"
+                ? "Authorize & execute (real)"
+                : "Authorize & execute (simulated)"}
+          </Button>
+        )}
 
         {!connected && <p className="text-xs text-slate-500">Connect the owning wallet to approve or execute.</p>}
       </div>
     </Card>
   );
 }
+

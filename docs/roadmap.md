@@ -172,6 +172,51 @@ recommendation** (see [`docs/risk-hedging.md`](risk-hedging.md)):
   live-unavailable → honest UNAVAILABLE fallback (never pretend mock is live);
   typecheck + full suite green (core 55, integrations 10, web build clean).
 
+## Phase 7 — Human Approval & Payment Execution ✅
+
+Builds the complete, controlled payment execution pipe (see
+[`docs/execution.md`](execution.md)):
+
+- **`@mova/types` (`execution.ts`)**: `TransactionSpec` (the signed-against
+  plan — versioned, digest-bound, never built from raw LLM output);
+  `PaymentPreview` (recipient, amount, asset, route, fees, savings, compliance,
+  risk, hedge, expected settlement, Sui destination, plan digest);
+  `ExecutionFailureInfo` (structured taxonomy: user rejection, insufficient
+  balance, network failure, invalid recipient, transaction failure, timeout,
+  integration unavailable, idempotency violation, approval expiry);
+  `PaymentExecutionInfo` (per-record idempotency state).
+- **`@mova/core` (`src/execution/`)**: dependency-free SHA-256 (`sha256.ts`);
+  `buildTransactionSpec`/`planDigest`/`assertSpecIntegrity`/`assertAuthzMatchesSpec`
+  (`plan.ts` — deterministic txn construction from validated state, the digest is
+  what the human approves and execution verifies); `classifyExecutionFailure`
+  (`failure.ts`); `beginExecution`/`markExecuted`/`markFailed` (`idempotency.ts`);
+  `runComplianceGate` (fail-closed screening, `compliance.ts`);
+  `buildPaymentPreview` (`preview.ts`); `PaymentExecutionEngine.buildPlan`
+  (`engine.ts`) — the full pipe: route discovery → optimization → compliance →
+  risk/hedge → spec + preview.
+- **`@mova/logger`**: new error codes `ERR_INSUFFICIENT_BALANCE`,
+  `ERR_BALANCE_QUERY_FAILED`, `ERR_NETWORK_FAILURE`, `ERR_EXECUTION_TIMEOUT`,
+  `ERR_IDEMPOTENCY_VIOLATION`.
+- **`@mova/wallet`**: `PaymentAuthz.specDigest` (the authz is bound to exactly
+  the plan digest the human approved); `PaymentRecord.execution` (idempotency
+  state).
+- **`apps/web`**: `lib/pipeline/execution-engine.ts` (browser bridge for the
+  full pipe); `lib/pipeline/balance.ts` (best-effort pre-flight balance check);
+  `PaymentPreviewPanel` (the human approval UX — "I understand what this
+  executes" acknowledgment gating Approve; blocked/REVIEW states); `ApprovalPanel`
+  (Authorize & execute → real-or-simulated Sui settlement); store wiring
+  (plans per record, spec-bound approval, idempotent execution, structured
+  failure surfacing).
+- **Deliverable:** complete end-to-end payment flow — Intent → Parsing →
+  Validation → Route → Compliance → Risk/Hedge → Explanation (Preview) →
+  Human Approval → Wallet authz → Execution → Sui Settlement. Real settlement
+  preferred (same verified `settle-real.ts`/`SuiSettlementProvider` path from
+  Phase 2), simulated fallback honest (`txDigest: null`, reason recorded).
+- **DoD:** full typecheck green; core 96 / ai 34 / qr 10 / wallet 18 /
+  integrations 10 tests green; web build clean; browser flow verified
+  (preview → acknowledge → approve → execute → SETTLED, and insufficient-
+  balance failure surfaced across all panels).
+
 ## Ongoing (every phase)
 
 - Keep `docs/` and foundation packages in sync with any design change.

@@ -13,6 +13,7 @@ import type {
   IntentAction,
   Money,
   Network,
+  PaymentExecutionInfo,
   PaymentState,
   RecipientType,
   TransactionStatus,
@@ -148,6 +149,12 @@ export interface PaymentAuthz {
   network: Network;
   /** Single-use, correlated to the approval decision. */
   nonce: string;
+  /**
+   * Digest of the deterministic `TransactionSpec` the human approved. When
+   * present, execution MUST rebuild the spec and verify this digest matches —
+   * the human approves exactly the bytes that execute.
+   */
+  specDigest: string | null;
   issuedAt: number;
   expiresAt: number;
   decision: "APPROVED";
@@ -182,6 +189,8 @@ export interface PaymentRecord {
   approval: ApprovalView | null;
   authz: PaymentAuthz | null;
   settlement: PaymentSettlement | null;
+  /** Phase 7 execution/idempotency state (null until a spec is built). */
+  execution: PaymentExecutionInfo | null;
   createdAt: number;
   updatedAt: number;
 }

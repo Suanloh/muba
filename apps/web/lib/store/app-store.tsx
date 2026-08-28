@@ -15,8 +15,9 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { failureUserMessage } from "@mova/core";
 import { MovaError, ErrorCode } from "@mova/logger";
-import type { AuditEvent, Network } from "@mova/types";
+import type { AuditEvent, ExecutionFailureInfo, Network } from "@mova/types";
 import type {
   GateVerdict,
   PaymentReceipt,
@@ -26,20 +27,19 @@ import type {
 import { useMovaWallet } from "@/lib/wallet/mova-wallet-context";
 import { EXPECTED_NETWORK, WEB_SETTLEMENT_MODE } from "@/lib/wallet/networks";
 import { buildTransferTransaction } from "@/lib/pipeline/real-settlement";
+import { hasSufficientBalance, querySuiBalance } from "@/lib/pipeline/balance";
+import { buildPaymentPlan, type PaymentPlan } from "@/lib/pipeline/execution-engine";
 import {
   approveFlow,
-  checkGateForRecord,
   createFlow,
   executeFlow,
+  failFlow,
   rejectFlow,
   runToAwaitingApproval,
   simulateAiAutoExecute,
   type RealSettlementAttempt,
 } from "@/lib/pipeline/demo-pipeline";
-import {
-  assessPaymentRisk,
-  type RiskView,
-} from "@/lib/pipeline/risk-recommendation";
+import { type RiskView } from "@/lib/pipeline/risk-recommendation";
 
 export interface AppNotification {
   id: string;
@@ -55,9 +55,14 @@ interface AppStoreValue {
   notifications: AppNotification[];
   audit: AuditEvent[];
   activeRecordId: string | null;
-  /** recordId -> deterministic risk + hedge recommendation (Phase 6). */
+  /** recordId -> deterministic risk + hedge recommendation (Phase 6 view). */
   riskViews: Record<string, RiskView>;
+  /** recordId -> Phase 7 plan (payment preview + signed transaction spec). */
+  plans: Record<string, PaymentPlan>;
+  /** recordId -> the user acknowledged the preview ("I understand"). */
+  acknowledged: Record<string, boolean>;
   setActiveRecordId: (id: string | null) => void;
+  setAcknowledged: (recordId: string, value: boolean) => void;
   submitIntent: (rawText: string) => Promise<PaymentRecord>;
   approve: (recordId: string) => Promise<PaymentRecord>;
   reject: (recordId: string) => Promise<PaymentRecord>;
@@ -77,7 +82,11 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const [audit, setAudit] = useState<AuditEvent[]>([]);
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null);
   const [riskViews, setRiskViews] = useState<Record<string, RiskView>>({});
+  const [plans, setPlans] = useState<Record<string, PaymentPlan>>({});
+  const [acknowledged, setAcknowledgedState] = useState<Record<string, boolean>>({});
   const auditRef = useRef<AuditEvent[]>([]);
+  /** RecordIds currently executing — prevents concurrent double-execution. */
+  const executingRef = useRef<Set<string>>(new Set());
 
   const ownerAddress: SuiAddress | null =
     connection.status === "connected" ? connection.account?.address ?? null : null;
@@ -105,6 +114,10 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     setReceipts((prev) => [receipt, ...prev]);
   }, []);
 
+  const setAcknowledged = useCallback((recordId: string, value: boolean) => {
+    setAcknowledgedState((prev) => ({ ...prev, [recordId]: value }));
+  }, []);
+
   const submitIntent = useCallback(
     async (rawText: string): Promise<PaymentRecord> => {
       if (!ownerAddress) {
@@ -123,34 +136,92 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
         return record;
       }
 
-      const staged = runToAwaitingApproval(record);
+      // Phase 7 — run the deterministic pipe and build the signed spec + preview.
+      let plan: PaymentPlan;
+      try {
+        plan = await buildPaymentPlan(record, {
+          sender: ownerAddress,
+          expectedSettlement: WEB_SETTLEMENT_MODE === "real" ? "REAL" : "SIMULATED",
+        });
+      } catch (err) {
+        // Engine failure (integration unavailable / no route / compliance
+        // blocked) — fail closed and record the structured failure.
+        const failure = classifyEngineFailure(err, record);
+        const failed = failFlow(record, failure);
+        appendAudit(failed.events);
+        updateRecord(failed.record);
+        notify("error", "Payment blocked", failureUserMessage(failure));
+        return failed.record;
+      }
+
+      // Seed the record's execution/idempotency state from the signed spec.
+      const seeded: PaymentRecord = {
+        ...record,
+        execution: {
+          clientRequestId: plan.spec.clientRequestId,
+          specDigest: plan.spec.planDigest,
+          attempts: 0,
+          lastAttemptAt: null,
+          executedAt: null,
+          failure: null,
+          settlement: null,
+        },
+      };
+      setRecords((prev) => prev.map((r) => (r.id === record.id ? seeded : r)));
+      setPlans((prev) => ({ ...prev, [record.id]: plan }));
+      setRiskViews((prev) => ({
+        ...prev,
+        [record.id]: { recommendation: plan.recommendation, comparisons: plan.comparisons },
+      }));
+
+      // Fail-closed: a BLOCK verdict never reaches human approval.
+      const preview = plan.preview;
+      const blocked =
+        preview.compliance.decision === "BLOCK" || preview.risk.decision === "BLOCK";
+      if (blocked) {
+        const reason =
+          preview.compliance.decision === "BLOCK"
+            ? preview.compliance.explanation
+            : `Risk decision ${preview.risk.decision}: ${preview.risk.explanation}`;
+        const failure: ExecutionFailureInfo = {
+          code: "INTEGRATION_UNAVAILABLE",
+          stage: preview.compliance.decision === "BLOCK" ? "COMPLIANCE" : "RISK_HEDGE",
+          message: reason,
+          userActionable: false,
+          retryable: false,
+          at: Date.now(),
+        };
+        const failed = failFlow(seeded, failure);
+        appendAudit(failed.events);
+        updateRecord(failed.record);
+        notify("error", "Payment blocked", failureUserMessage(failure));
+        return failed.record;
+      }
+
+      // Advance the flow to AWAITING_APPROVAL (deterministic stages).
+      const staged = runToAwaitingApproval(seeded);
       appendAudit(staged.events);
       if (!staged.ok) {
         notify("error", "Pipeline stalled", staged.reason ?? "could not advance the flow");
         return staged.record;
       }
       setRecords((prev) => prev.map((r) => (r.id === record.id ? staged.record : r)));
-      notify("info", "Awaiting approval", `${parsed.action} ${parsed.amount.amount} ${parsed.amount.asset} to ${parsed.recipient.value}`);
+      notify(
+        "info",
+        "Awaiting approval",
+        `${preview.action} ${preview.amount.amount} ${preview.amount.asset} to ${preview.suiDestination} — review the preview and approve to continue.`,
+      );
 
-      // Phase 6 — deterministic risk assessment + hedge evaluation feeding the
-      // final payment recommendation (routing → risk → route-vs-route+hedge).
-      if (!parsed.validated) return staged.record;
-      try {
-        const view = await assessPaymentRisk(staged.record);
-        setRiskViews((prev) => ({ ...prev, [record.id]: view }));
-        const rec = view.recommendation;
-        if (rec.hedged) {
-          notify("info", "Hedge recommended", `MOVA suggests a ${rec.hedge.strategy} via ${rec.hedge.dataSource} (risk ${rec.risk.band}, ${rec.risk.score}/100).`);
-        } else if (rec.risk.band === "HIGH" || rec.risk.band === "CRITICAL") {
-          notify("warning", `${rec.risk.band} risk`, `Financial risk ${rec.risk.score}/100 — review required before proceeding.`);
-        }
-      } catch (err) {
-        // Risk assessment is advisory; a failure must not block the demo flow.
-        notify("warning", "Risk assessment unavailable", err instanceof Error ? err.message : String(err));
+      // Advisory REVIEW/hedge notification (REVIEW may proceed, but flagged).
+      const rec = plan.recommendation;
+      if (preview.compliance.decision === "REVIEW" || preview.risk.decision === "REVIEW") {
+        notify("warning", "Review required", "Compliance or risk flagged this payment for review — proceed at your own discretion.");
+      } else if (rec.hedged) {
+        notify("info", "Hedge recommended", `MOVA suggests a ${rec.hedge.strategy} via ${rec.hedge.dataSource} (risk ${rec.risk.band}, ${rec.risk.score}/100).`);
       }
       return staged.record;
     },
-    [ownerAddress, appendAudit, notify],
+    [ownerAddress, appendAudit, notify, updateRecord],
   );
 
   const approve = useCallback(
@@ -162,13 +233,23 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
         notify("error", "Wallet required", err.message);
         throw err;
       }
-      const res = approveFlow(record, ownerAddress);
+      const plan = plans[recordId];
+      if (!plan) {
+        const err = new MovaError(ErrorCode.EXECUTION_GATE_BLOCKED, "No payment preview exists — build the plan before approving.");
+        notify("error", "Preview required", err.message);
+        throw err;
+      }
+      // The human approves EXACTLY the spec digest shown in the preview.
+      const res = approveFlow(record, ownerAddress, {
+        specDigest: plan.spec.planDigest,
+        clientRequestId: plan.spec.clientRequestId,
+      });
       updateRecord(res.record);
       appendAudit(res.events);
-      notify("success", "Approved", `Payment ${record.id.slice(0, 12)}… approved. Payment authz issued to ${ownerAddress.slice(0, 10)}….`);
+      notify("success", "Approved", `Payment ${record.id.slice(0, 12)}… approved. Authz bound to plan ${plan.spec.planDigest.slice(0, 12)}….`);
       return res.record;
     },
-    [records, ownerAddress, updateRecord, appendAudit, notify],
+    [records, plans, ownerAddress, updateRecord, appendAudit, notify],
   );
 
   const reject = useCallback(
@@ -198,63 +279,96 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
         notify("error", "Wallet required", err.message);
         throw err;
       }
+      const plan = plans[recordId];
+      if (!plan) {
+        const err = new MovaError(ErrorCode.EXECUTION_GATE_BLOCKED, "No signed payment plan exists for this record.");
+        notify("error", "Plan required", err.message);
+        throw err;
+      }
+      // UI-layer idempotency: refuse concurrent/re-entrant execution of the
+      // same record (defense-in-depth on top of the state machine + guard).
+      if (executingRef.current.has(recordId)) {
+        const err = new MovaError(ErrorCode.IDEMPOTENCY_VIOLATION, "This payment is already being executed.");
+        notify("error", "Already executing", err.message);
+        throw err;
+      }
+      executingRef.current.add(recordId);
       const networkMatches = network.matches;
       if (!networkMatches) {
+        executingRef.current.delete(recordId);
         const err = new MovaError(ErrorCode.WALLET_NETWORK_MISMATCH, "Wallet network does not match the MOVA expected network.");
         notify("error", "Network mismatch", err.message);
         throw err;
       }
-      // Defense in depth: the gate must pass before touching the wallet.
-      const verdict = checkGateForRecord(record, {
-        connected: true,
-        ownerAddress: record.ownerAddress,
-        networkMatches,
-      });
-      if (!verdict.allowed) {
-        const err = new MovaError(ErrorCode.EXECUTION_GATE_BLOCKED, `Execution refused: ${verdict.reason}`, {
-          details: { code: verdict.code },
-        });
-        notify("error", "Gate blocked", err.message);
-        throw err;
-      }
 
-      // Real settlement: build a native-SUI transfer PTB from the validated
-      // record and submit through the connected wallet (gated). Falls back to
-      // simulated with an honest note when the wallet can't submit.
-      const realSubmit =
-        WEB_SETTLEMENT_MODE === "real"
-          ? async (rec: PaymentRecord): Promise<RealSettlementAttempt> => {
-              try {
-                const tx = buildTransferTransaction(rec, rec.ownerAddress);
-                const res = await executeTransaction(tx);
-                if (res.ok && res.digest) return { digest: res.digest, error: null };
-                return { digest: null, error: res.error ?? "wallet could not execute the transaction" };
-              } catch (err) {
-                return { digest: null, error: err instanceof Error ? err.message : String(err) };
+      try {
+        // Real settlement: build the PTB from the SIGNED SPEC (never from raw
+        // LLM/record fields) and submit through the connected wallet (gated).
+        // Falls back to simulated with an honest note when the wallet can't submit.
+        const realSubmit =
+          WEB_SETTLEMENT_MODE === "real"
+            ? async (spec: typeof plan.spec, rec: PaymentRecord): Promise<RealSettlementAttempt> => {
+                try {
+                  // Deterministic txn construction from the approved spec.
+                  const tx = buildTransferTransaction(
+                    { ...rec, amount: spec.amount, recipient: { ...rec.recipient, value: spec.recipient } },
+                    spec.sender,
+                  );
+                  const res = await executeTransaction(tx);
+                  if (res.ok && res.digest) return { digest: res.digest, error: null };
+                  return { digest: null, error: res.error ?? "wallet could not execute the transaction" };
+                } catch (err) {
+                  return { digest: null, error: err instanceof Error ? err.message : String(err) };
+                }
               }
-            }
-          : undefined;
+            : undefined;
 
-      const res = await executeFlow(record, provider, { networkMatches, submitReal: realSubmit });
-      updateRecord(res.record);
-      appendAudit(res.events);
-      if (res.receipt) addReceipt(res.receipt);
+        // Best-effort balance pre-flight — fail honestly BEFORE the wallet signs
+        // when the payer cannot cover amount + gas.
+        const preflightBalance = async () => {
+          const balance = await querySuiBalance(record.ownerAddress);
+          if (!hasSufficientBalance(balance, plan.spec.amount.amount)) {
+            return {
+              ok: false,
+              message: `Wallet balance ${balance === null ? "unreadable" : balance.toString()} is below ${plan.spec.amount.amount} ${plan.spec.amount.asset} + gas.`,
+            };
+          }
+          return { ok: true, message: "" };
+        };
 
-      const settled = res.record.settlement;
-      if (settled?.simulated === false) {
-        notify(
-          "success",
-          "Settled (real testnet)",
-          `Record ${record.id.slice(0, 12)}… settled on-chain. Digest ${settled.txDigest?.slice(0, 14)}….`,
-        );
-      } else if (settled?.error) {
-        notify("warning", "Settled (simulated fallback)", settled.error);
-      } else {
-        notify("success", "Settled (simulated)", `Record ${record.id.slice(0, 12)}… settled via wallet authz. No real value moved.`);
+        const res = await executeFlow(record, provider, plan.spec, {
+          networkMatches,
+          preflightBalance: WEB_SETTLEMENT_MODE === "real" ? preflightBalance : undefined,
+          submitReal: realSubmit,
+        });
+        updateRecord(res.record);
+        appendAudit(res.events);
+        if (res.receipt) addReceipt(res.receipt);
+
+        // Structured failure surfaced to the user (never swallowed).
+        if (res.failure) {
+          notify("error", "Execution failed", failureUserMessage(res.failure));
+          return res.record;
+        }
+
+        const settled = res.record.settlement;
+        if (settled?.simulated === false) {
+          notify(
+            "success",
+            "Settled (real testnet)",
+            `Record ${record.id.slice(0, 12)}… settled on-chain. Digest ${settled.txDigest?.slice(0, 14)}….`,
+          );
+        } else if (settled?.error) {
+          notify("warning", "Settled (simulated fallback)", settled.error);
+        } else {
+          notify("success", "Settled (simulated)", `Record ${record.id.slice(0, 12)}… settled via wallet authz. No real value moved.`);
+        }
+        return res.record;
+      } finally {
+        executingRef.current.delete(recordId);
       }
-      return res.record;
     },
-    [records, provider, network.matches, executeTransaction, updateRecord, appendAudit, addReceipt, notify],
+    [records, plans, provider, network.matches, executeTransaction, updateRecord, appendAudit, addReceipt, notify],
   );
 
   const attemptAiAutoExecute = useCallback(
@@ -273,6 +387,8 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     auditRef.current = [];
     setAudit([]);
     setRiskViews({});
+    setPlans({});
+    setAcknowledgedState({});
     setActiveRecordId(null);
   }, []);
 
@@ -284,7 +400,10 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       audit,
       activeRecordId,
       riskViews,
+      plans,
+      acknowledged,
       setActiveRecordId,
+      setAcknowledged,
       submitIntent,
       approve,
       reject,
@@ -293,7 +412,25 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       dismissNotification,
       clearAll,
     }),
-    [records, receipts, notifications, audit, activeRecordId, riskViews, submitIntent, approve, reject, execute, attemptAiAutoExecute, dismissNotification, clearAll],
+    [
+      records,
+      receipts,
+      notifications,
+      audit,
+      activeRecordId,
+      riskViews,
+      plans,
+      acknowledged,
+      setActiveRecordId,
+      setAcknowledged,
+      submitIntent,
+      approve,
+      reject,
+      execute,
+      attemptAiAutoExecute,
+      dismissNotification,
+      clearAll,
+    ],
   );
 
   return <AppStoreContext.Provider value={value}>{children}</AppStoreContext.Provider>;
@@ -305,4 +442,22 @@ export function useAppStore(): AppStoreValue {
     throw new Error("useAppStore must be used within AppStoreProvider");
   }
   return ctx;
+}
+
+/** Classify a plan-build failure into a structured ExecutionFailureInfo. */
+function classifyEngineFailure(err: unknown, _record: PaymentRecord): ExecutionFailureInfo {
+  const code =
+    err instanceof MovaError
+      ? err.code === "ERR_COMPLIANCE_BLOCKED" || err.code === "ERR_COMPLIANCE_UNAVAILABLE" || err.code === "ERR_ROUTING_FAILED"
+        ? "INTEGRATION_UNAVAILABLE"
+        : "UNKNOWN"
+      : "UNKNOWN";
+  return {
+    code,
+    stage: "ROUTE_DISCOVERY",
+    message: err instanceof Error ? err.message : String(err),
+    userActionable: false,
+    retryable: false,
+    at: Date.now(),
+  };
 }

@@ -135,6 +135,11 @@ export interface IssuePaymentAuthzParams {
   approvalDecision: ApprovalDecision;
   /** Correlation nonce from the approval (single-use). */
   approvalNonce: string;
+  /**
+   * Digest of the deterministic TransactionSpec the human approved. Execution
+   * verifies the rebuilt spec's digest matches this before submitting.
+   */
+  specDigest?: string | null;
   issuedAt?: number;
   /** Lifetime of the authority (default 15 minutes). */
   ttlMs?: number;
@@ -168,6 +173,7 @@ export function issuePaymentAuthz(params: IssuePaymentAuthzParams): PaymentAuthz
     recipient: params.recipient,
     network: params.network,
     nonce: params.approvalNonce,
+    specDigest: params.specDigest ?? null,
     issuedAt,
     expiresAt: issuedAt + (params.ttlMs ?? 15 * 60 * 1000),
     decision: "APPROVED",
@@ -246,6 +252,7 @@ export function createPaymentRecord(input: {
     approval: null,
     authz: null,
     settlement: null,
+    execution: null,
     createdAt: input.createdAt,
     updatedAt: input.createdAt,
   };

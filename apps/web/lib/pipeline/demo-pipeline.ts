@@ -16,14 +16,25 @@
  *   `WalletExecutionGate` verdict (human approval + wallet authz).
  */
 import { PaymentStateMachine } from "@mova/core";
+import {
+  assertAuthzMatchesSpec,
+  assertSpecIntegrity,
+  beginExecution,
+  classifyExecutionFailure,
+  markExecuted,
+  markFailed,
+} from "@mova/core";
 import { MovaError, ErrorCode } from "@mova/logger";
 import type {
   AuditEvent,
+  ExecutionFailureInfo,
   Money,
   Network,
   PaymentEvent,
+  PaymentExecutionInfo,
   PaymentGuardContext,
   PaymentState,
+  TransactionSpec,
 } from "@mova/types";
 import {
   createPaymentRecord,
@@ -37,6 +48,7 @@ import {
   type PaymentRecord,
   type PaymentReceipt,
   type PaymentSettlement,
+  type SignatureResult,
   type SuiAddress,
 } from "@mova/wallet";
 
@@ -160,6 +172,8 @@ export interface FlowResult {
   record: PaymentRecord;
   events: AuditEvent[];
   receipt: PaymentReceipt | null;
+  /** Structured failure when the attempt did not settle (null on success). */
+  failure: ExecutionFailureInfo | null;
 }
 
 const gate = new WalletExecutionGate();
@@ -289,12 +303,18 @@ export function runToAwaitingApproval(
   return { record: current, events, ok: true, reason: null };
 }
 
-/** Human approval — issues a wallet-scoped PaymentAuthz ONLY on APPROVE. */
+/**
+ * Human approval — issues a wallet-scoped PaymentAuthz ONLY on APPROVE. When a
+ * `specDigest` is provided the authz is bound to EXACTLY the plan the human
+ * saw (execution verifies the rebuilt spec matches), and the record's
+ * execution/idempotency state is seeded.
+ */
 export function approveFlow(
   record: PaymentRecord,
   approverAddress: SuiAddress,
-  now = Date.now(),
+  opts: { specDigest?: string | null; clientRequestId?: string; now?: number } = {},
 ): { record: PaymentRecord; events: AuditEvent[]; authz: PaymentAuthz | null } {
+  const now = opts.now ?? Date.now();
   const decision = "APPROVE" as const;
   const authz = issuePaymentAuthz({
     paymentRecordId: record.id,
@@ -305,6 +325,7 @@ export function approveFlow(
     network: record.network,
     approvalDecision: decision,
     approvalNonce: crypto.randomUUID(),
+    specDigest: opts.specDigest ?? null,
     issuedAt: now,
     ttlMs: 15 * 60 * 1000,
   });
@@ -313,11 +334,24 @@ export function approveFlow(
     status: "APPROVED",
     decision: "APPROVE",
     resolvedAt: now,
-    reason: `Approved by owner ${approverAddress.slice(0, 10)}…`,
+    reason: `Approved by owner ${approverAddress.slice(0, 10)}…${opts.specDigest ? ` (plan ${opts.specDigest.slice(0, 12)}…)` : ""}`,
   };
 
+  // Seed the execution/idempotency state so execute() can refuse duplicates.
+  const execution: PaymentExecutionInfo | null = opts.specDigest
+    ? {
+        clientRequestId: opts.clientRequestId ?? `mova-${record.correlationId}`,
+        specDigest: opts.specDigest,
+        attempts: 0,
+        lastAttemptAt: null,
+        executedAt: null,
+        failure: null,
+        settlement: null,
+      }
+    : record.execution;
+
   const next = applyTransition(
-    { ...record, approval: approvalView, authz },
+    { ...record, approval: approvalView, authz, execution },
     "APPROVED",
     "approval",
   );
@@ -329,6 +363,7 @@ export function approveFlow(
       authzId: authz.id,
       nonce: authz.nonce,
       expiresAt: authz.expiresAt,
+      planDigest: authz.specDigest,
     }),
   ];
   return { record: next.record, events, authz };
@@ -343,11 +378,58 @@ export function rejectFlow(
     "APPROVAL_REJECTED",
     "approval",
   );
-  const finalRecord = next.ok ? next.record : { ...record, state: "FAILED" as PaymentState, updatedAt: Date.now() };
+  // Record the rejection as a structured, user-actionable execution failure.
+  const failure: ExecutionFailureInfo = {
+    code: "USER_REJECTED",
+    stage: "HUMAN_APPROVAL",
+    message: `Rejected by ${approverAddress.slice(0, 10)}…`,
+    userActionable: true,
+    retryable: true,
+    at: Date.now(),
+  };
+  const execution = record.execution ? markFailed(record.execution, failure) : record.execution;
+  const finalRecord = next.ok
+    ? { ...next.record, execution }
+    : { ...record, state: "FAILED" as PaymentState, execution, updatedAt: Date.now() };
   return {
     record: finalRecord,
     events: [
-      audit(record.correlationId, record.id, "APPROVAL_REJECTED", { type: "APPROVER", id: approverAddress }, record.state, "FAILED", false, { decision: "REJECT" }),
+      audit(record.correlationId, record.id, "APPROVAL_REJECTED", { type: "APPROVER", id: approverAddress }, record.state, "FAILED", false, { decision: "REJECT", failure }),
+    ],
+  };
+}
+
+/**
+ * Fail a flow from any non-terminal state (used when a deterministic engine
+ * BLOCKs the plan — e.g. compliance or risk). The structured `failure` carries
+ * the honest, detailed reason; the state machine uses CANCELLED to reach the
+ * terminal FAILED state.
+ */
+export function failFlow(
+  record: PaymentRecord,
+  failure: ExecutionFailureInfo,
+  now = Date.now(),
+): { record: PaymentRecord; events: AuditEvent[] } {
+  const sm = new PaymentStateMachine(guardContext(record, "compliance"));
+  const outcome = sm.apply(record.state, "CANCELLED");
+  const execution: PaymentExecutionInfo | null = record.execution
+    ? markFailed(record.execution, failure, now)
+    : {
+        clientRequestId: `mova-${record.correlationId}`,
+        specDigest: "",
+        attempts: 0,
+        lastAttemptAt: now,
+        executedAt: null,
+        failure,
+        settlement: "FAILED" as const,
+      };
+  const finalRecord = outcome.ok && outcome.to
+    ? { ...record, state: outcome.to, execution, updatedAt: now }
+    : { ...record, state: "FAILED" as PaymentState, execution, updatedAt: now };
+  return {
+    record: finalRecord,
+    events: [
+      audit(record.correlationId, record.id, "CANCELLED", { type: "SYSTEM", id: "execution-engine" }, record.state, "FAILED", false, { failure }),
     ],
   };
 }
@@ -391,27 +473,110 @@ export function simulateAiAutoExecute(
   });
 }
 
-/**
- * Gated execution (Phase 1): gate → wallet authz (signature) → simulated
- * settlement. No real value moves. Returns the settled record + receipt.
- */
 export interface RealSettlementAttempt {
   digest: string | null;
   error: string | null;
 }
 
+export interface ExecuteFlowContext {
+  networkMatches: boolean;
+  now?: number;
+  /**
+   * Best-effort balance pre-flight. Return `{ ok: false }` to fail the attempt
+   * with INSUFFICIENT_BALANCE before the wallet is asked to sign.
+   */
+  preflightBalance?: () => Promise<{ ok: boolean; message: string }>;
+  /**
+   * Real settlement submission. Receives the SPEC (not the raw record) so the
+   * on-chain transaction is built from exactly what the human approved.
+   */
+  submitReal?: (spec: TransactionSpec, record: PaymentRecord) => Promise<RealSettlementAttempt>;
+}
+
+/** Move a record to FAILED (state machine) and record the structured failure. */
+function failExecution(
+  record: PaymentRecord,
+  failure: ExecutionFailureInfo,
+  events: AuditEvent[],
+  now: number,
+): FlowResult {
+  const event: PaymentEvent = record.state === "EXECUTING" ? "EXECUTION_FAILED" : "EXECUTION_SIMULATION_FAILED";
+  const sm = new PaymentStateMachine(guardContext(record, "execution"));
+  const outcome = sm.apply(record.state, event);
+  const execution = record.execution ? markFailed(record.execution, failure, now) : record.execution;
+  const finalRecord =
+    outcome.ok && outcome.to
+      ? { ...record, state: outcome.to, execution, updatedAt: now }
+      : { ...record, state: "FAILED" as PaymentState, execution, updatedAt: now };
+  events.push(
+    audit(record.correlationId, record.id, "EXECUTION_FAILED", { type: "SYSTEM", id: "execution-engine" }, record.state, "FAILED", false, {
+      failure,
+    }),
+  );
+  return { record: finalRecord, events, receipt: null, failure };
+}
+
 /**
- * Execute a payment. When `ctx.submitReal` is provided (real settlement mode),
- * the settlement attempts a REAL on-chain transfer through the connected
- * wallet; on success it records a real digest with `simulated: false`, on
- * failure it falls back to SIMULATED and records the reason honestly.
+ * Phase 7 — Gated execution of an APPROVED payment.
+ *
+ * Runs the wallet-authz → execution → settlement tail of the pipe from the
+ * deterministic `TransactionSpec` (NEVER from raw LLM output or mutable record
+ * fields):
+ *
+ *   spec integrity → idempotency (no duplicate) → wallet gate → authz digest
+ *   match → balance pre-flight → wallet authz signature → EXECUTING → real-or-
+ *   simulated Sui settlement → SETTLED
+ *
+ * Real settlement is preferred; when the wallet can't fund/submit it falls
+ * back to SIMULATED and records the reason honestly (never fabricates a
+ * digest). Every failure is classified into a structured ExecutionFailureInfo,
+ * recorded on the record, and returned — never swallowed.
  */
 export async function executeFlow(
   record: PaymentRecord,
   wallet: Pick<MovaWalletProvider, "signPersonalMessage">,
-  ctx: { networkMatches: boolean; now?: number; submitReal?: (record: PaymentRecord) => Promise<RealSettlementAttempt> },
+  spec: TransactionSpec | null,
+  ctx: ExecuteFlowContext,
 ): Promise<FlowResult> {
   const now = ctx.now ?? Date.now();
+  const events: AuditEvent[] = [];
+
+  // 0) A deterministic spec is REQUIRED — never construct a txn from raw state.
+  if (!spec) {
+    return failExecution(
+      record,
+      classifyExecutionFailure(
+        new MovaError(ErrorCode.EXECUTION_SIMULATION_FAILED, "no transaction spec — refusing execution"),
+        { stage: "EXECUTION" },
+      ),
+      events,
+      now,
+    );
+  }
+
+  // 1) Spec integrity — the digest must still match the canonical serialization.
+  const integrity = assertSpecIntegrity(spec);
+  if (!integrity.ok) {
+    return failExecution(
+      record,
+      classifyExecutionFailure(
+        new MovaError(ErrorCode.EXECUTION_GATE_BLOCKED, integrity.reason ?? "spec integrity failed"),
+        { stage: "EXECUTION" },
+      ),
+      events,
+      now,
+    );
+  }
+
+  // 2) Idempotency — refuse duplicate/expired/replayed executions.
+  let execution: PaymentExecutionInfo;
+  try {
+    execution = beginExecution(record.execution, spec, now).state;
+  } catch (err) {
+    return failExecution(record, classifyExecutionFailure(err, { stage: "EXECUTION" }), events, now);
+  }
+
+  // 3) Wallet gate (defense in depth) + the authz must be for THIS spec digest.
   const verdict = checkGateForRecord(record, {
     connected: true,
     ownerAddress: record.ownerAddress,
@@ -419,37 +584,84 @@ export async function executeFlow(
     now,
   });
   if (!verdict.allowed) {
-    throw new MovaError(ErrorCode.EXECUTION_GATE_BLOCKED, `execution blocked by wallet gate: ${verdict.reason}`, {
-      details: { code: verdict.code },
-    });
+    return failExecution(
+      record,
+      classifyExecutionFailure(
+        new MovaError(ErrorCode.EXECUTION_GATE_BLOCKED, `execution blocked by wallet gate: ${verdict.reason}`, {
+          details: { code: verdict.code },
+        }),
+        { stage: "EXECUTION" },
+      ),
+      events,
+      now,
+    );
+  }
+  try {
+    assertAuthzMatchesSpec(spec, record.authz?.specDigest ?? null);
+  } catch (err) {
+    return failExecution(record, classifyExecutionFailure(err, { stage: "WALLET_AUTHZ" }), events, now);
   }
 
-  // Wallet authz — the Phase 1 stand-in for PTB signing. The wallet owner must
-  // sign an explicit authorization message.
+  // 4) Balance pre-flight (best-effort — see balance.ts).
+  if (ctx.preflightBalance) {
+    const bal = await ctx.preflightBalance();
+    if (!bal.ok) {
+      return failExecution(
+        record,
+        classifyExecutionFailure(new MovaError(ErrorCode.INSUFFICIENT_BALANCE, bal.message), { stage: "EXECUTION" }),
+        events,
+        now,
+      );
+    }
+  }
+
+  // 5) Wallet authz — the wallet owner signs an explicit authorization over the SPEC.
   const authzMessage =
     `MOVA payment authorization\n` +
-    `Record: ${record.id}\n` +
-    `Owner: ${record.ownerAddress}\n` +
-    `Amount: ${record.amount.amount} ${record.amount.asset}\n` +
-    `Recipient: ${record.recipient.value}\n` +
+    `Record: ${spec.recordId}\n` +
+    `Owner: ${spec.sender}\n` +
+    `Amount: ${spec.amount.amount} ${spec.amount.asset}\n` +
+    `Recipient: ${spec.recipient}\n` +
+    `Network: ${spec.network}\n` +
+    `Route: ${spec.routeId}\n` +
+    `Total: ${spec.totalCost.amount} ${spec.totalCost.asset}\n` +
+    `Plan digest: ${spec.planDigest}\n` +
     `Authz nonce: ${record.authz?.nonce ?? "none"}`;
-  const sig = await wallet.signPersonalMessage(authzMessage);
+  let sig: SignatureResult;
+  try {
+    sig = await wallet.signPersonalMessage(authzMessage);
+  } catch (err) {
+    return failExecution(record, classifyExecutionFailure(err, { stage: "WALLET_AUTHZ" }), events, now);
+  }
 
-  const events: AuditEvent[] = [];
-  const executing = applyTransition(record, "EXECUTION_STARTED", "execution");
-  if (!executing.ok) throw new MovaError(ErrorCode.EXECUTION_SIMULATION_FAILED, executing.reason ?? "execution start failed");
+  // 6) EXECUTION_STARTED.
+  const executing = applyTransition({ ...record, execution }, "EXECUTION_STARTED", "execution");
+  if (!executing.ok) {
+    return failExecution(
+      record,
+      classifyExecutionFailure(
+        new MovaError(ErrorCode.EXECUTION_SIMULATION_FAILED, executing.reason ?? "execution start failed"),
+        { stage: "EXECUTION" },
+      ),
+      events,
+      now,
+    );
+  }
   events.push(
     audit(record.correlationId, record.id, "EXECUTION_STARTED", { type: "APPROVER", id: record.ownerAddress }, record.state, "EXECUTING", false, {
       signedBy: sig.address,
       walletAuthz: true,
+      planDigest: spec.planDigest,
     }),
   );
 
-  // Real settlement attempt (gated + approved + wallet authz already done).
+  // 7) Real settlement attempt from the SPEC (gated + approved + authz done).
   let settlement: PaymentSettlement;
   let realSettled = false;
+  let txDigest: string | null = null;
   if (ctx.submitReal) {
-    const real = await ctx.submitReal(record);
+    const real = await ctx.submitReal(spec, record);
+    txDigest = real.digest;
     if (real.digest) {
       realSettled = true;
       settlement = settlementOutcome({
@@ -483,12 +695,27 @@ export async function executeFlow(
     });
   }
 
-  const settled = applyTransition(
-    { ...executing.record, settlement },
-    "SETTLED",
-    "settlement",
-  );
-  const finalRecord = settled.ok ? settled.record : executing.record;
+  // 8) SETTLED — the deterministic confirmation gate.
+  const settled = applyTransition({ ...executing.record, settlement }, "SETTLED", "settlement");
+  if (!settled.ok) {
+    return failExecution(
+      { ...executing.record, settlement },
+      classifyExecutionFailure(
+        new MovaError(ErrorCode.SETTLEMENT_UNCONFIRMED, settled.reason ?? "settlement confirmation failed"),
+        { stage: "SUI_SETTLEMENT", txDigest },
+      ),
+      events,
+      now,
+    );
+  }
+
+  // 9) Mark executed (idempotency) after the terminal SETTLED transition.
+  let finalRecord: PaymentRecord = settled.record;
+  try {
+    finalRecord = { ...finalRecord, execution: markExecuted(execution, settlement.status, now) };
+  } catch {
+    // Already marked executed — still SETTLED; keep state as-is.
+  }
   events.push(
     audit(record.correlationId, record.id, "SETTLED", { type: "SYSTEM", id: realSettled ? "sui-settlement" : "simulated-settlement" }, "EXECUTING", "SETTLED", !realSettled, {
       simulated: !realSettled,
@@ -509,5 +736,5 @@ export async function executeFlow(
     simulated: !realSettled,
   });
 
-  return { record: finalRecord, events, receipt };
+  return { record: finalRecord, events, receipt, failure: null };
 }

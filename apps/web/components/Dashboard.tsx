@@ -5,8 +5,9 @@ import { WalletStatusCard } from "./WalletStatusCard";
 import { ChatPaymentInterface } from "./ChatPaymentInterface";
 import { QrScanInterface } from "./QrScanInterface";
 import { PaymentFlowTimeline } from "./PaymentFlowTimeline";
-import { ApprovalPanel } from "./ApprovalPanel";
+import { PaymentPreviewPanel } from "./PaymentPreviewPanel";
 import { RiskAssessmentPanel } from "./RiskAssessmentPanel";
+import { ApprovalPanel } from "./ApprovalPanel";
 import { SafetyBoundaryCard } from "./SafetyBoundaryCard";
 import { TransactionHistory } from "./TransactionHistory";
 import { OwnershipPanel } from "./OwnershipPanel";
@@ -36,6 +37,7 @@ export function Dashboard() {
           <ChatPaymentInterface />
           <QrScanInterface />
           <PaymentFlowTimeline />
+          <PaymentPreviewPanel />
           <RiskAssessmentPanel />
           <ApprovalPanel />
           <SafetyBoundaryCard />

@@ -1,11 +1,12 @@
 "use client";
+import { failureLabel } from "@mova/core";
 import { useAppStore } from "@/lib/store/app-store";
 import { formatMoney, shortAddress, shortId } from "@/lib/pipeline/format";
 import { Badge, Card } from "./ui";
 
 /** Txn history: payment records + receipts, bound to the owner. */
 export function TransactionHistory() {
-  const { records, receipts } = useAppStore();
+  const { records, receipts, plans } = useAppStore();
 
   if (records.length === 0) {
     return (
@@ -20,6 +21,8 @@ export function TransactionHistory() {
       <div className="divide-y divide-slate-100">
         {records.map((r) => {
           const receipt = receipts.find((rc) => rc.paymentRecordId === r.id);
+          const plan = plans[r.id];
+          const failure = r.execution?.failure ?? null;
           return (
             <div key={r.id} className="flex items-center justify-between gap-3 py-3">
               <div className="min-w-0">
@@ -35,8 +38,16 @@ export function TransactionHistory() {
                   {formatMoney(r.amount)} → {shortAddress(r.recipient.value, 8, 6)}
                   {r.approval?.decision === "APPROVE" ? " · approved" : ""}
                 </p>
-                {r.settlement?.error && (
+                {failure && (
+                  <p className="mt-0.5 text-[11px] text-rose-600">
+                    {failureLabel(failure.code)}: {failure.message}
+                  </p>
+                )}
+                {!failure && r.settlement?.error && (
                   <p className="mt-0.5 text-[11px] text-amber-600">{r.settlement.error}</p>
+                )}
+                {plan && (
+                  <p className="mt-0.5 font-mono text-[10px] text-slate-400">plan {plan.spec.planDigest.slice(0, 16)}…</p>
                 )}
               </div>
               <div className="text-right">
