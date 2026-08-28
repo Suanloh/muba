@@ -4,11 +4,14 @@ import { NetworkBanner } from "./NetworkBanner";
 import { WalletStatusCard } from "./WalletStatusCard";
 import { ChatPaymentInterface } from "./ChatPaymentInterface";
 import { QrScanInterface } from "./QrScanInterface";
-import { PaymentFlowTimeline } from "./PaymentFlowTimeline";
+import { TransactionStatusCard } from "./TransactionStatusCard";
 import { PaymentPreviewPanel } from "./PaymentPreviewPanel";
+import { PaymentExplanationPanel } from "./PaymentExplanationPanel";
 import { RiskAssessmentPanel } from "./RiskAssessmentPanel";
 import { ApprovalPanel } from "./ApprovalPanel";
 import { SafetyBoundaryCard } from "./SafetyBoundaryCard";
+import { AuditTrailPanel } from "./AuditTrailPanel";
+import { NotificationsPanel } from "./NotificationsPanel";
 import { TransactionHistory } from "./TransactionHistory";
 import { OwnershipPanel } from "./OwnershipPanel";
 import { NotificationArea } from "./NotificationArea";
@@ -36,11 +39,14 @@ export function Dashboard() {
         <div className="space-y-6">
           <ChatPaymentInterface />
           <QrScanInterface />
-          <PaymentFlowTimeline />
+          <TransactionStatusCard />
           <PaymentPreviewPanel />
+          <PaymentExplanationPanel />
           <RiskAssessmentPanel />
           <ApprovalPanel />
           <SafetyBoundaryCard />
+          <AuditTrailPanel />
+          <NotificationsPanel />
           <TransactionHistory />
         </div>
         <aside className="space-y-6">

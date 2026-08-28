@@ -51,6 +51,8 @@ import {
   type SignatureResult,
   type SuiAddress,
 } from "@mova/wallet";
+import type { PaymentPlan } from "./execution-engine";
+import { compliancePayload, hedgePayload, riskPayload, routeDecisionPayload } from "./trace";
 
 // ---------------------------------------------------------------------------
 // Asset registry (smallest-unit math, no floats)
@@ -250,9 +252,19 @@ export function createFlow(
   return { record, parsed, events };
 }
 
-/** Advance a VALIDATED flow through the simulated deterministic stages to AWAITING_APPROVAL. */
+/**
+ * Advance a VALIDATED flow through the simulated deterministic stages to
+ * AWAITING_APPROVAL.
+ *
+ * Phase 8: when a `plan` is provided, each stage's audit event carries the
+ * actual deterministic decision data (route candidates + cost, compliance
+ * verdict, risk verdict) and a decision-only `HEDGE_DECIDED` event is emitted,
+ * so the audit trail is a complete, traceable decision log — not just state
+ * transition names.
+ */
 export function runToAwaitingApproval(
   record: PaymentRecord,
+  plan: PaymentPlan | null = null,
   now = Date.now(),
 ): { record: PaymentRecord; events: AuditEvent[]; ok: boolean; reason: string | null } {
   if (!record.validated) {
@@ -265,33 +277,11 @@ export function runToAwaitingApproval(
       action: record.action,
       amount: record.amount,
       recipient: record.recipient,
+      network: record.network,
+      memo: record.memo,
+      validated: true,
     }),
   );
-
-  const steps: Array<{
-    event: PaymentEvent;
-    to: PaymentState;
-    stage: "validation" | "compliance" | "risk" | "approval";
-    name: string;
-    simulated: boolean;
-  }> = [
-    { event: "ROUTE_FOUND", to: "ROUTE_FOUND", stage: "validation", name: "ROUTE_FOUND", simulated: true },
-    { event: "COMPLIANCE_CHECKED", to: "COMPLIANCE_CHECKED", stage: "compliance", name: "COMPLIANCE_CHECKED", simulated: true },
-    { event: "RISK_ASSESSED", to: "RISK_ASSESSED", stage: "risk", name: "RISK_ASSESSED", simulated: true },
-    { event: "APPROVAL_REQUESTED", to: "AWAITING_APPROVAL", stage: "approval", name: "APPROVAL_REQUESTED", simulated: false },
-  ];
-
-  for (const step of steps) {
-    const next = applyTransition(current, step.event, step.stage);
-    if (!next.ok) return { record: current, events, ok: false, reason: next.reason };
-    current = next.record;
-    events.push(
-      audit(record.correlationId, record.id, step.name, { type: "SYSTEM", id: "demo-engine" }, events[events.length - 1]?.newState ?? current.state, step.to, step.simulated, {
-        simulated: step.simulated,
-        stage: step.name,
-      }),
-    );
-  }
 
   const approvalView: ApprovalView = {
     status: "PENDING",
@@ -299,6 +289,87 @@ export function runToAwaitingApproval(
     resolvedAt: null,
     reason: `Owner ${record.ownerAddress.slice(0, 10)}… must approve this payment (threshold-met demo).`,
   };
+
+  const steps: Array<{
+    event: PaymentEvent;
+    to: PaymentState;
+    stage: "validation" | "compliance" | "risk" | "approval";
+    name: string;
+    simulated: boolean;
+    payload: unknown;
+  }> = [
+    {
+      event: "ROUTE_FOUND",
+      to: "ROUTE_FOUND",
+      stage: "validation",
+      name: "ROUTE_FOUND",
+      simulated: true,
+      payload: plan ? routeDecisionPayload(plan) : { stage: "ROUTE_FOUND", simulated: true },
+    },
+    {
+      event: "COMPLIANCE_CHECKED",
+      to: "COMPLIANCE_CHECKED",
+      stage: "compliance",
+      name: "COMPLIANCE_CHECKED",
+      simulated: true,
+      payload: plan ? compliancePayload(plan) : { stage: "COMPLIANCE_CHECKED", simulated: true },
+    },
+    {
+      event: "RISK_ASSESSED",
+      to: "RISK_ASSESSED",
+      stage: "risk",
+      name: "RISK_ASSESSED",
+      simulated: true,
+      payload: plan ? riskPayload(plan) : { stage: "RISK_ASSESSED", simulated: true },
+    },
+    {
+      event: "APPROVAL_REQUESTED",
+      to: "AWAITING_APPROVAL",
+      stage: "approval",
+      name: "APPROVAL_REQUESTED",
+      simulated: false,
+      payload: { reason: approvalView.reason, level: "SINGLE", expiresAt: plan?.preview.expiresAt ?? null },
+    },
+  ];
+
+  for (const step of steps) {
+    const next = applyTransition(current, step.event, step.stage);
+    if (!next.ok) return { record: current, events, ok: false, reason: next.reason };
+    current = next.record;
+    events.push(
+      audit(
+        record.correlationId,
+        record.id,
+        step.name,
+        { type: "SYSTEM", id: "demo-engine" },
+        events[events.length - 1]?.newState ?? current.state,
+        step.to,
+        step.simulated,
+        step.payload,
+      ),
+    );
+  }
+
+  // Phase 8 — decision-only audit event for the hedging decision (no state
+  // transition: newState = null so it never creates a lifecycle step, but it
+  // still appears in the audit trail's decision log). Honest provenance:
+  // STATIC_DEV / UNAVAILABLE data is flagged simulated, never presented as live.
+  if (plan) {
+    const hedge = hedgePayload(plan);
+    events.push(
+      audit(
+        record.correlationId,
+        record.id,
+        "HEDGE_DECIDED",
+        { type: "SYSTEM", id: "hedging-engine" },
+        "RISK_ASSESSED",
+        null,
+        hedge.dataSource === "STATIC_DEV" || hedge.dataSource === "UNAVAILABLE",
+        hedge,
+      ),
+    );
+  }
+
   current = { ...current, approval: approvalView, updatedAt: now };
   return { record: current, events, ok: true, reason: null };
 }

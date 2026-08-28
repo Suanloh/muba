@@ -24,3 +24,21 @@ export function shortAddress(address: string, head = 6, tail = 4): string {
 export function shortId(id: string, n = 14): string {
   return id.length > n ? `${id.slice(0, n)}…` : id;
 }
+
+/** Format an epoch-ms timestamp as a compact local date+time. */
+export function formatDateTime(ts: number): string {
+  if (!ts) return "—";
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+/** Format a duration (ms) as "3m 12s" / "45s" / "<1s". */
+export function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return "—";
+  const s = Math.round(ms / 1000);
+  if (s < 1) return "<1s";
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return m > 0 ? `${m}m ${rem}s` : `${rem}s`;
+}

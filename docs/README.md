@@ -14,6 +14,7 @@ everything else.
 | [`integration-strategy.md`](integration-strategy.md) | Sui / Thetanuts / market-data / screening: mock → real strategy |
 | [`conventions.md`](conventions.md) | Logging & error-handling conventions |
 | [`roadmap.md`](roadmap.md) | Phased delivery plan (Phase 1 → n) |
+| [`trust.md`](trust.md) | Phase 8 — txn status, audit trail & trust layer (observability, explanation, notifications) |
 
 The documents are backed by runnable foundation code:
 

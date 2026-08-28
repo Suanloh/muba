@@ -47,12 +47,16 @@ export interface AppNotification {
   title: string;
   message: string;
   at: number;
+  /** Record the notification belongs to (payment notifs only). */
+  recordId?: string;
 }
 
 interface AppStoreValue {
   records: PaymentRecord[];
   receipts: PaymentReceipt[];
   notifications: AppNotification[];
+  /** Persistent per-payment notification feed (approval / executing / done / failed). */
+  notificationFeed: AppNotification[];
   audit: AuditEvent[];
   activeRecordId: string | null;
   /** recordId -> deterministic risk + hedge recommendation (Phase 6 view). */
@@ -79,6 +83,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const [records, setRecords] = useState<PaymentRecord[]>([]);
   const [receipts, setReceipts] = useState<PaymentReceipt[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notificationFeed, setNotificationFeed] = useState<AppNotification[]>([]);
   const [audit, setAudit] = useState<AuditEvent[]>([]);
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null);
   const [riskViews, setRiskViews] = useState<Record<string, RiskView>>({});
@@ -97,10 +102,22 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     setAudit([...auditRef.current]);
   }, []);
 
-  const notify = useCallback((kind: AppNotification["kind"], title: string, message: string) => {
-    const n: AppNotification = { id: crypto.randomUUID(), kind, title, message, at: Date.now() };
-    setNotifications((prev) => [...prev.slice(-8), n]);
-  }, []);
+  const notify = useCallback(
+    (kind: AppNotification["kind"], title: string, message: string, recordId?: string) => {
+      const n: AppNotification = {
+        id: crypto.randomUUID(),
+        kind,
+        title,
+        message,
+        at: Date.now(),
+        ...(recordId ? { recordId } : {}),
+      };
+      setNotifications((prev) => [...prev.slice(-8), n]);
+      // Persistent feed — the per-payment notif history (never auto-cleared).
+      setNotificationFeed((prev) => [n, ...prev].slice(0, 200));
+    },
+    [],
+  );
 
   const dismissNotification = useCallback((id: string) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
@@ -198,26 +215,28 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
         return failed.record;
       }
 
-      // Advance the flow to AWAITING_APPROVAL (deterministic stages).
-      const staged = runToAwaitingApproval(seeded);
+      // Advance the flow to AWAITING_APPROVAL (deterministic stages) — the
+      // plan is attached so each audit event carries the real decision data.
+      const staged = runToAwaitingApproval(seeded, plan);
       appendAudit(staged.events);
       if (!staged.ok) {
-        notify("error", "Pipeline stalled", staged.reason ?? "could not advance the flow");
+        notify("error", "Pipeline stalled", staged.reason ?? "could not advance the flow", record.id);
         return staged.record;
       }
       setRecords((prev) => prev.map((r) => (r.id === record.id ? staged.record : r)));
       notify(
         "info",
-        "Awaiting approval",
+        "Approval required",
         `${preview.action} ${preview.amount.amount} ${preview.amount.asset} to ${preview.suiDestination} — review the preview and approve to continue.`,
+        record.id,
       );
 
       // Advisory REVIEW/hedge notification (REVIEW may proceed, but flagged).
       const rec = plan.recommendation;
       if (preview.compliance.decision === "REVIEW" || preview.risk.decision === "REVIEW") {
-        notify("warning", "Review required", "Compliance or risk flagged this payment for review — proceed at your own discretion.");
+        notify("warning", "Review required", "Compliance or risk flagged this payment for review — proceed at your own discretion.", record.id);
       } else if (rec.hedged) {
-        notify("info", "Hedge recommended", `MOVA suggests a ${rec.hedge.strategy} via ${rec.hedge.dataSource} (risk ${rec.risk.band}, ${rec.risk.score}/100).`);
+        notify("info", "Hedge recommended", `MOVA suggests a ${rec.hedge.strategy} via ${rec.hedge.dataSource} (risk ${rec.risk.band}, ${rec.risk.score}/100).`, record.id);
       }
       return staged.record;
     },
@@ -246,7 +265,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       });
       updateRecord(res.record);
       appendAudit(res.events);
-      notify("success", "Approved", `Payment ${record.id.slice(0, 12)}… approved. Authz bound to plan ${plan.spec.planDigest.slice(0, 12)}….`);
+      notify("success", "Approved", `Payment ${record.id.slice(0, 12)}… approved. Authz bound to plan ${plan.spec.planDigest.slice(0, 12)}….`, record.id);
       return res.record;
     },
     [records, plans, ownerAddress, updateRecord, appendAudit, notify],
@@ -264,7 +283,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       const res = rejectFlow(record, ownerAddress);
       updateRecord(res.record);
       appendAudit(res.events);
-      notify("warning", "Rejected", `Payment ${record.id.slice(0, 12)}… was rejected.`);
+      notify("warning", "Payment failed", `Payment ${record.id.slice(0, 12)}… was rejected.`, record.id);
       return res.record;
     },
     [records, ownerAddress, updateRecord, appendAudit, notify],
@@ -336,6 +355,10 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
           return { ok: true, message: "" };
         };
 
+        // Payment executing — wallet authz signature is about to be requested
+        // and the transaction submitted. Emitted before the gated tail runs.
+        notify("info", "Payment executing", `Record ${record.id.slice(0, 12)}… authorizing wallet signature and settling (${WEB_SETTLEMENT_MODE}).`, record.id);
+
         const res = await executeFlow(record, provider, plan.spec, {
           networkMatches,
           preflightBalance: WEB_SETTLEMENT_MODE === "real" ? preflightBalance : undefined,
@@ -347,7 +370,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
 
         // Structured failure surfaced to the user (never swallowed).
         if (res.failure) {
-          notify("error", "Execution failed", failureUserMessage(res.failure));
+          notify("error", "Payment failed", failureUserMessage(res.failure), record.id);
           return res.record;
         }
 
@@ -355,13 +378,14 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
         if (settled?.simulated === false) {
           notify(
             "success",
-            "Settled (real testnet)",
+            "Payment completed (real testnet)",
             `Record ${record.id.slice(0, 12)}… settled on-chain. Digest ${settled.txDigest?.slice(0, 14)}….`,
+            record.id,
           );
         } else if (settled?.error) {
-          notify("warning", "Settled (simulated fallback)", settled.error);
+          notify("warning", "Payment completed (simulated fallback)", settled.error, record.id);
         } else {
-          notify("success", "Settled (simulated)", `Record ${record.id.slice(0, 12)}… settled via wallet authz. No real value moved.`);
+          notify("success", "Payment completed", `Record ${record.id.slice(0, 12)}… settled via wallet authz. No real value moved.`, record.id);
         }
         return res.record;
       } finally {
@@ -384,6 +408,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     setRecords([]);
     setReceipts([]);
     setNotifications([]);
+    setNotificationFeed([]);
     auditRef.current = [];
     setAudit([]);
     setRiskViews({});
@@ -397,6 +422,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       records,
       receipts,
       notifications,
+      notificationFeed,
       audit,
       activeRecordId,
       riskViews,
@@ -416,6 +442,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       records,
       receipts,
       notifications,
+      notificationFeed,
       audit,
       activeRecordId,
       riskViews,

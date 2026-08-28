@@ -1,7 +1,7 @@
 "use client";
 import { failureLabel } from "@mova/core";
 import { useAppStore } from "@/lib/store/app-store";
-import { formatMoney, shortAddress, shortId } from "@/lib/pipeline/format";
+import { formatDateTime, formatMoney, shortAddress, shortId } from "@/lib/pipeline/format";
 import { Badge, Card } from "./ui";
 
 /** Txn history: payment records + receipts, bound to the owner. */
@@ -25,7 +25,7 @@ export function TransactionHistory() {
           const failure = r.execution?.failure ?? null;
           return (
             <div key={r.id} className="flex items-center justify-between gap-3 py-3">
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="truncate font-mono text-xs text-slate-700">{shortId(r.id)}</span>
                   <Badge tone={r.state === "SETTLED" ? "green" : r.state === "FAILED" ? "red" : r.state === "AWAITING_APPROVAL" ? "amber" : "slate"}>
@@ -35,8 +35,24 @@ export function TransactionHistory() {
                   {r.settlement && !r.settlement.simulated && <Badge tone="green">real on-chain</Badge>}
                 </div>
                 <p className="mt-0.5 truncate text-xs text-slate-500">
-                  {formatMoney(r.amount)} → {shortAddress(r.recipient.value, 8, 6)}
+                  <span className="font-medium text-slate-700">{formatMoney(r.amount)}</span> →{" "}
+                  {shortAddress(r.recipient.value, 8, 6)}
                   {r.approval?.decision === "APPROVE" ? " · approved" : ""}
+                </p>
+                {/* Phase 8 — route + date/time columns */}
+                <p className="mt-0.5 flex flex-wrap gap-x-3 text-[11px] text-slate-500">
+                  <span>
+                    Date: <span className="text-slate-600">{formatDateTime(r.createdAt)}</span>
+                  </span>
+                  {plan && (
+                    <span>
+                      Route:{" "}
+                      <span className="font-mono text-slate-600">
+                        #{plan.preview.route.routeNo} {plan.preview.route.summary.legOrder.join("→")}
+                      </span>{" "}
+                      · <span className="text-slate-600">{formatMoney(plan.preview.route.totalFee)} fees</span>
+                    </span>
+                  )}
                 </p>
                 {failure && (
                   <p className="mt-0.5 text-[11px] text-rose-600">

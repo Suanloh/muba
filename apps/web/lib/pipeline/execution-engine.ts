@@ -48,6 +48,8 @@ export interface PaymentPlan {
   spec: TransactionSpec;
   recommendation: BuildPlanResult["recommendation"];
   comparisons: BuildPlanResult["comparisons"];
+  /** Phase 8 — full route candidates + optimization result (audit/explanation). */
+  optimization: BuildPlanResult["optimization"];
 }
 
 function toParsedIntent(record: PaymentRecord): ParsedIntent {
@@ -107,7 +109,7 @@ export async function buildPaymentPlan(
     volatility: new StaticVolatilityProvider({ allowed: true }),
   });
 
-  const { preview, spec, recommendation, comparisons } = await engine.buildPlan({
+  const { preview, spec, recommendation, comparisons, optimization } = await engine.buildPlan({
     intent: toPaymentIntent(record),
     parsed: toParsedIntent(record),
     record: {
@@ -127,5 +129,5 @@ export async function buildPaymentPlan(
     hedgedRoute: { availableAssets: DEMO_FUNDED_ASSETS, horizonDays: 7 },
   });
 
-  return { preview, spec, recommendation, comparisons };
+  return { preview, spec, recommendation, comparisons, optimization };
 }

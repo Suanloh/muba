@@ -4,3 +4,4 @@ export * from "./payment-state.js";
 export * from "./nl.js";
 export * from "./nl-assets.js";
 export * from "./execution.js";
+export * from "./trace.js";
