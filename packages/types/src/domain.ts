@@ -15,6 +15,8 @@ import type {
   ApprovalLevel,
   ApprovalStatus,
   ComplianceDecision,
+  HedgeDataSource,
+  HedgeDecision,
   HedgingStrategy,
   IntentAction,
   IntentSource,
@@ -25,8 +27,10 @@ import type {
   RecipientType,
   RiskBand,
   RiskDecision,
+  RouteLegKind,
   RouteStatus,
   ScreeningDecision,
+  SelectionCriterion,
   SettlementMode,
   TransactionStatus,
   TransactionType,
@@ -189,43 +193,187 @@ export interface QrDecoded {
 // Routing (deterministic discovery + optimization)
 // ---------------------------------------------------------------------------
 
+/**
+ * A single step in a payment route. Every route ends with an ONCHAIN leg on
+ * Sui and a SETTLEMENT leg to the recipient, so MOVA always settles on Sui.
+ * All numeric fields are deterministic; nothing here is produced by an LLM.
+ */
 export interface RouteLeg {
+  kind: RouteLegKind;
+  /** Source asset symbol (or fiat ISO code, e.g. "USD", "MYR"). */
   from: string;
+  /** Destination asset symbol. */
   to: string;
+  /** Asset moved on this leg. */
   asset: string;
+  /** Amount moved on this leg (smallest units). */
   amount: Money;
+  /** Rail/provider identifier, e.g. "SUI_CHAIN", "MOVA_DEX", "MOVA_ONRAMP". */
   provider: string;
+  /** Fee charged by this leg, in the leg's fee asset (e.g. gas in SUI). */
   fee: Money;
   estimatedTimeMs: number;
+  /** Deterministic 0..1 reliability of this leg. */
+  reliability: number;
+  /** Deterministic 0..1 liquidity of this leg. */
+  liquidity: number;
+  /** Deterministic 0..1 risk factor of this leg (higher = riskier). */
+  riskFactor: number;
+  /** Transparent note for the cost breakdown (e.g. "1.5% on-ramp fee"). */
+  note: string;
 }
 
-export interface Route {
-  id: string;
-  paymentIntentId: string;
-  /** Candidate number within this intent (1..N). */
-  routeNo: number;
-  legs: RouteLeg[];
-  totalFee: Money;
-  /** Total estimated cost to the user (fees + slippage), smallest units. */
-  totalEstimatedCost: Money;
-  estimatedTimeMs: number;
-  /** Deterministic 0..1 reliability score. */
-  reliability: number;
-  status: RouteStatus;
-  selectionScore: number; // computed by the optimizer
-  selectionReason: string;
-  createdAt: Timestamp;
+/**
+ * Transparent per-route cost breakdown. Every figure is a `Money` in
+ * `quoteAsset` (the common numeraire, default USDC) smallest units so routes
+ * are directly comparable. `total` is the source of `totalEstimatedCost`.
+ */
+export interface RouteCostBreakdown {
+  quoteAsset: string;
+  /** Sum of all leg fees (payment fees), incl. swap fee + spread on conversions. */
+  paymentFees: Money;
+  /** Conversion/swap costs (swap fee + spread) on CONVERSION legs. */
+  conversionCost: Money;
+  /** Estimated slippage on CONVERSION legs. */
+  slippage: Money;
+  /** Other route costs (service fees, etc.) — reserved, currently 0. */
+  other: Money;
+  /** paymentFees + conversionCost + slippage + other. */
+  total: Money;
+}
+
+/** One labelled, deterministic risk driver on a route. */
+export interface RouteRiskFactor {
+  factorId: string;
+  label: string;
+  severity: "LOW" | "MEDIUM" | "HIGH";
+  /** Deterministic 0..1 weight of this factor in the composite score. */
+  weight: number;
+  /** Deterministic 0..1 level of this factor. */
+  level: number;
+  note: string;
+}
+
+/** Composite route risk — lower is safer. */
+export interface RouteRisk {
+  /** Deterministic 0..1 score (weighted mean of the factors' levels). */
+  score: number;
+  factors: RouteRiskFactor[];
+}
+
+/** Transparent summary of a route's composition (for the comparison view). */
+export interface RouteSummary {
+  sourceAsset: string;
+  destinationAsset: string;
+  hasConversion: boolean;
+  conversionCount: number;
+  hasOffchainLeg: boolean;
+  hasOnchainLeg: boolean;
+  settleOnSui: boolean;
+  /** Ordered leg kinds, e.g. ["CONVERSION","ONCHAIN","SETTLEMENT"]. */
+  legOrder: RouteLegKind[];
 }
 
 /** Deterministic routing candidate BEFORE optimization ranking. */
 export interface RouteCandidate {
+  /** Candidate number within this intent (1..N). */
   routeNo: number;
   legs: RouteLeg[];
+  summary: RouteSummary;
+  cost: RouteCostBreakdown;
+  /** Sum of all leg fees in quoteAsset (== cost.paymentFees). */
   totalFee: Money;
+  /** Total estimated cost to the user (== cost.total = fees + slippage). */
   totalEstimatedCost: Money;
   estimatedTimeMs: number;
-  /** Deterministic 0..1 reliability score. */
+  /** Deterministic 0..1 reliability score (product of leg reliabilities). */
   reliability: number;
+  /** Deterministic 0..1 liquidity score (minimum of leg liquidity). */
+  liquidity: number;
+  risk: RouteRisk;
+}
+
+/**
+ * Per-factor selection scores (1 = best on that factor) used in the
+ * comparison view. Computed by the optimizer via min-max normalization
+ * across the candidate set — no floats, no LLM, fully reproducible.
+ */
+export interface RouteFactorScores {
+  cost: number; // 1 = cheapest
+  speed: number; // 1 = fastest
+  risk: number; // 1 = safest
+  reliability: number; // 1 = most reliable
+  liquidity: number; // 1 = most liquid
+}
+
+/**
+ * Explicit user preference weights (all >= 0; the optimizer normalizes them
+ * to sum to 1). This is how a user steers the score — never an unexplained
+ * AI-generated number.
+ */
+export interface RoutePreferenceWeights {
+  cost: number;
+  speed: number;
+  reliability: number;
+  risk: number;
+  liquidity: number;
+}
+
+/** A ranked route produced by the optimizer. */
+export interface Route extends RouteCandidate {
+  id: string;
+  paymentIntentId: string;
+  status: RouteStatus;
+  /** Deterministic composite 0..1 score (higher = better). */
+  selectionScore: number;
+  /** Transparent math: the weights, per-factor scores and why this won. */
+  selectionReason: string;
+  factorScores: RouteFactorScores;
+  createdAt: Timestamp;
+}
+
+/** One row of the route comparison table (Route B vs Route A, etc.). */
+export interface RouteComparisonRow {
+  routeNo: number;
+  totalCost: Money;
+  estimatedTimeMs: number;
+  riskScore: number; // 0..1 (lower = safer)
+  reliability: number; // 0..1
+  liquidity: number; // 0..1
+  selectionScore: number; // 0..1
+}
+
+/**
+ * Savings analysis over the candidate set: the cheapest route, the selected
+ * route, and the cost difference between them plus a reference to the most
+ * expensive viable route.
+ */
+export interface RouteSavings {
+  cheapestRouteNo: number;
+  cheapestTotalCost: Money;
+  selectedRouteNo: number | null;
+  selectedTotalCost: Money | null;
+  mostExpensiveRouteNo: number;
+  mostExpensiveTotalCost: Money;
+  /** selectedTotalCost − cheapestTotalCost (>= 0; 0 when selected == cheapest). */
+  premiumVsCheapest: Money;
+  /** mostExpensiveTotalCost − selectedTotalCost (the money saved vs the worst route). */
+  estimatedSavings: Money;
+  selectedIsCheapest: boolean;
+  /** Transparent, human-readable savings math. */
+  explanation: string;
+}
+
+/** Full output of the optimizer: ranked routes + comparison + savings. */
+export interface RouteOptimizationResult {
+  routes: Route[];
+  selected: Route | null;
+  criterion: SelectionCriterion;
+  /** Effective weights actually used (normalized to 1). */
+  weights: RoutePreferenceWeights;
+  comparison: RouteComparisonRow[];
+  savings: RouteSavings | null;
+  engineVersion: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -297,6 +445,8 @@ export interface RiskSignal {
   threshold: string;
   weight: number;
   contribution: number; // 0..100
+  /** Deterministic explanation of how the contribution was computed. */
+  note?: string;
 }
 
 export interface HedgingPlan {
@@ -306,6 +456,10 @@ export interface HedgingPlan {
   params: Record<string, string>;
   estimatedCost: Money;
   expiresAt: Timestamp;
+  /** Honest provenance: LIVE / STATIC_DEV / UNAVAILABLE. */
+  dataSource?: HedgeDataSource;
+  /** Deterministic note (e.g. why hedging is/isn't recommended, gap). */
+  note?: string;
 }
 
 export interface RiskAssessment {
@@ -319,6 +473,113 @@ export interface RiskAssessment {
   hedging: HedgingPlan;
   decision: RiskDecision;
   engineVersion: string;
+  explanation: string;
+  createdAt: Timestamp;
+}
+
+// ---------------------------------------------------------------------------
+// Risk inputs — deterministic volatility model (Phase 6)
+// ---------------------------------------------------------------------------
+
+/** Deterministic volatility snapshot for one asset (annualized + daily). */
+export interface VolatilitySnapshot {
+  asset: string;
+  /** Annualized volatility as a decimal (0.20 = 20%). */
+  annualizedVol: number;
+  /** Daily volatility as a decimal (annualized / sqrt(365)). */
+  dailyVol: number;
+  /** Horizon over which exposure is assessed, in days. */
+  horizonDays: number;
+  /** Confidence level for Value-at-Risk (0..1, e.g. 0.95). */
+  confidenceLevel: number;
+  /**
+   * Provenance of the volatility data, e.g. "THETANUTS_OPTIONBOOK" for live
+   * implied vol or "STATIC_DEV_TABLE" for the cached dev table.
+   */
+  source: string;
+  /** True when this snapshot is simulated/dev data — never treated as live. */
+  simulated: boolean;
+  asOf: Timestamp;
+}
+
+// ---------------------------------------------------------------------------
+// Hedge evaluation (Phase 6) — deterministic route-with-vs-without hedge math
+// ---------------------------------------------------------------------------
+
+/** Effect of a hedge on a payment: exposure, cost, and route-cost impact. */
+export interface HedgeImpact {
+  /** The asset whose price move is hedged (e.g. "SUI", "ETH"). */
+  hedgedAsset: string;
+  /** Gross exposure in quoteAsset (smallest units) before hedging. */
+  grossExposure: Money;
+  /** Exposure after the hedge (gross − reduction), in quoteAsset. */
+  netExposure: Money;
+  /** Exposure removed by the hedge (gross − net), in quoteAsset. */
+  exposureReduction: Money;
+  /** Relative reduction 0..1 (reduction / gross). */
+  exposureReductionRatio: number;
+  /** Unhedged Value-at-Risk the hedge offsets, in quoteAsset. */
+  valueAtRisk: Money;
+  /** Hedge premium converted to quoteAsset. */
+  hedgeCost: Money;
+  /** Hedge premium as basis points of the unhedged route cost. */
+  hedgeCostBps: number;
+  /** Route total cost WITHOUT the hedge (== route.totalEstimatedCost). */
+  routeCostWithoutHedge: Money;
+  /** Route total cost WITH the hedge (route cost + premium). */
+  routeCostWithHedge: Money;
+  /** Honest provenance: LIVE | STATIC_DEV | UNAVAILABLE. */
+  dataSource: HedgeDataSource;
+}
+
+/**
+ * One route compared with and without a hedge — the "route vs route+hedge"
+ * comparison the routing engine exposes, with a deterministic final call.
+ */
+export interface RouteHedgeComparison {
+  routeNo: number;
+  /** Strategy chosen for this route (NONE when no hedge). */
+  strategy: HedgingStrategy;
+  /** Final deterministic call: HEDGE or NO_HEDGE. */
+  hedgeDecision: HedgeDecision;
+  /** True when a hedge is needed AND cost-effective (== decision HEDGE). */
+  recommended: boolean;
+  /** Route cost without the hedge (== route.totalEstimatedCost). */
+  withoutHedge: Money;
+  /** Route cost with the hedge (withoutHedge + premium). */
+  withHedge: Money;
+  /** Extra cost of hedging (withHedge − withoutHedge), >= 0. */
+  delta: Money;
+  /** delta as basis points of withoutHedge. */
+  deltaBps: number;
+  /** Exposure removed by hedging, in quoteAsset. */
+  exposureReduction: Money;
+  /** Relative exposure reduction 0..1. */
+  exposureReductionRatio: number;
+  /** Honest provenance: LIVE | STATIC_DEV | UNAVAILABLE. */
+  dataSource: HedgeDataSource;
+  /** Deterministic, human-readable rationale (the math). */
+  reason: string;
+}
+
+/**
+ * MOVA's final payment recommendation — the Phase 6 deliverable. Combines the
+ * routed route, the financial risk assessment, and the route-with-vs-without
+ * hedge decision into one deterministic, explainable recommendation.
+ */
+export interface PaymentRecommendation {
+  id: string;
+  paymentIntentId: string;
+  route: Route;
+  risk: RiskAssessment;
+  hedge: RouteHedgeComparison;
+  /** Final total cost: route cost + hedge premium when hedged, else route cost. */
+  totalCost: Money;
+  /** True when the final recommendation includes a hedge. */
+  hedged: boolean;
+  /** Financial risk decision: PROCEED / REVIEW / BLOCK. */
+  decision: RiskDecision;
+  /** Deterministic, human-readable summary of the whole recommendation. */
   explanation: string;
   createdAt: Timestamp;
 }

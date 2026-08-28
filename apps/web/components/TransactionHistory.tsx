@@ -1,0 +1,90 @@
+"use client";
+import { failureLabel } from "@mova/core";
+import { useAppStore } from "@/lib/store/app-store";
+import { formatDateTime, formatMoney, shortAddress, shortId } from "@/lib/pipeline/format";
+import { Badge, Card } from "./ui";
+
+/** Txn history: payment records + receipts, bound to the owner. */
+export function TransactionHistory() {
+  const { records, receipts, plans } = useAppStore();
+
+  if (records.length === 0) {
+    return (
+      <Card title="Transaction history" subtitle="Records & receipts owned by your address.">
+        <p className="text-sm text-slate-500">No transactions yet.</p>
+      </Card>
+    );
+  }
+
+  return (
+    <Card title="Transaction history" subtitle="Records & receipts owned by your address.">
+      <div className="divide-y divide-slate-100">
+        {records.map((r) => {
+          const receipt = receipts.find((rc) => rc.paymentRecordId === r.id);
+          const plan = plans[r.id];
+          const failure = r.execution?.failure ?? null;
+          return (
+            <div key={r.id} className="flex items-center justify-between gap-3 py-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="truncate font-mono text-xs text-slate-700">{shortId(r.id)}</span>
+                  <Badge tone={r.state === "SETTLED" ? "green" : r.state === "FAILED" ? "red" : r.state === "AWAITING_APPROVAL" ? "amber" : "slate"}>
+                    {r.state}
+                  </Badge>
+                  {r.settlement?.simulated && <Badge tone="violet">simulated</Badge>}
+                  {r.settlement && !r.settlement.simulated && <Badge tone="green">real on-chain</Badge>}
+                </div>
+                <p className="mt-0.5 truncate text-xs text-slate-500">
+                  <span className="font-medium text-slate-700">{formatMoney(r.amount)}</span> →{" "}
+                  {shortAddress(r.recipient.value, 8, 6)}
+                  {r.approval?.decision === "APPROVE" ? " · approved" : ""}
+                </p>
+                {/* Phase 8 — route + date/time columns */}
+                <p className="mt-0.5 flex flex-wrap gap-x-3 text-[11px] text-slate-500">
+                  <span>
+                    Date: <span className="text-slate-600">{formatDateTime(r.createdAt)}</span>
+                  </span>
+                  {plan && (
+                    <span>
+                      Route:{" "}
+                      <span className="font-mono text-slate-600">
+                        #{plan.preview.route.routeNo} {plan.preview.route.summary.legOrder.join("→")}
+                      </span>{" "}
+                      · <span className="text-slate-600">{formatMoney(plan.preview.route.totalFee)} fees</span>
+                    </span>
+                  )}
+                </p>
+                {failure && (
+                  <p className="mt-0.5 text-[11px] text-rose-600">
+                    {failureLabel(failure.code)}: {failure.message}
+                  </p>
+                )}
+                {!failure && r.settlement?.error && (
+                  <p className="mt-0.5 text-[11px] text-amber-600">{r.settlement.error}</p>
+                )}
+                {plan && (
+                  <p className="mt-0.5 font-mono text-[10px] text-slate-400">plan {plan.spec.planDigest.slice(0, 16)}…</p>
+                )}
+              </div>
+              <div className="text-right">
+                {r.settlement?.txDigest ? (
+                  <a
+                    href={`https://suiscan.xyz/testnet/tx/${r.settlement.txDigest}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-mono text-xs text-sky-600 underline decoration-dotted hover:text-sky-700"
+                  >
+                    {shortAddress(r.settlement.txDigest, 10, 6)}
+                  </a>
+                ) : (
+                  <p className="font-mono text-xs text-slate-700">{r.settlement ? "no digest (simulated)" : "—"}</p>
+                )}
+                {receipt && <p className="mt-0.5 text-[11px] text-emerald-600">receipt {shortId(receipt.id, 10)}</p>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}

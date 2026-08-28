@@ -65,6 +65,9 @@ export type RouteStatus = "CANDIDATE" | "SELECTED" | "REJECTED";
 
 export type SelectionCriterion = "COST" | "SPEED" | "RELIABILITY";
 
+/** What a single route leg does (used to label the route composition). */
+export type RouteLegKind = "CONVERSION" | "OFFCHAIN" | "ONCHAIN" | "SETTLEMENT";
+
 // ---------------------------------------------------------------------------
 // Compliance (deterministic engine output)
 // ---------------------------------------------------------------------------
@@ -86,6 +89,16 @@ export type HedgingStrategy =
   | "PUT_OPTION"
   | "COVERED_CALL"
   | "FIXED_YIELD";
+
+/** Final deterministic hedging call for a route. */
+export type HedgeDecision = "HEDGE" | "NO_HEDGE";
+
+/**
+ * Honest provenance of hedge/volatility data. MOVA never pretends mocked data
+ * is live: `STATIC_DEV` data is simulated/dev-only, `UNAVAILABLE` means the
+ * live sponsor could not be reached (integration gap recorded, never faked).
+ */
+export type HedgeDataSource = "LIVE" | "STATIC_DEV" | "UNAVAILABLE";
 
 // ---------------------------------------------------------------------------
 // Approval

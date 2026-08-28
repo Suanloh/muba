@@ -1,0 +1,13 @@
+[package]
+name = "mova"
+edition = "2024.beta"
+
+[dependencies]
+# Phase 2: pin the framework revision to the target network before deploying
+# (framework/testnet for testnet, framework/mainnet for mainnet).
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/testnet" }
+
+[addresses]
+mova = "0x0"
+
+[dev-dependencies]

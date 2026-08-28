@@ -7,7 +7,12 @@
  * marked `simulated: true` (never treated as executable positions).
  */
 import { MovaError, ErrorCode } from "@mova/logger";
-import type { HedgingStrategy, Money, ProviderDescriptor } from "@mova/types";
+import type {
+  HedgeDataSource,
+  HedgingStrategy,
+  Money,
+  ProviderDescriptor,
+} from "@mova/types";
 
 export interface HedgeQuoteRequest {
   asset: string;
@@ -24,7 +29,15 @@ export interface HedgeQuote {
   notional: Money;
   /** Optional strike for options strategies. */
   strike: string | null;
+  /** Implied volatility from the option quote (0..1), when available. */
+  impliedVol?: number;
+  /** Option delta (0..1), when available — the fraction of the adverse move covered. */
+  delta?: number;
+  /** Coverage ratio (0..1), when available — override for `delta`. */
+  coverage?: number;
   validUntil: number;
+  /** Honest provenance: LIVE | STATIC_DEV | UNAVAILABLE. */
+  dataSource: HedgeDataSource;
   simulated: boolean;
 }
 
@@ -42,6 +55,8 @@ export interface MockHedgingOptions {
 /**
  * Deterministic mock. Premium = `premiumBps` of notional, no live pricing,
  * no real Thetanuts positions. Never usable when mocks are forbidden.
+ * Marked `dataSource: "STATIC_DEV"` + `simulated: true` — never presented as
+ * live Thetanuts data.
  */
 export class MockHedgingProvider implements HedgingProvider {
   readonly descriptor: ProviderDescriptor = {
@@ -73,7 +88,10 @@ export class MockHedgingProvider implements HedgingProvider {
       premium: { asset: request.amount.asset, amount: premium },
       notional: request.amount,
       strike: request.strategy === "PUT_OPTION" ? "0" : null,
+      delta: request.strategy === "PUT_OPTION" ? 0.5 : undefined,
+      coverage: request.strategy === "PUT_OPTION" ? 0.5 : undefined,
       validUntil: Date.now() + request.durationDays * 86_400_000,
+      dataSource: "STATIC_DEV",
       simulated: true,
     };
   }

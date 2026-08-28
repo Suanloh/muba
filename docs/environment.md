@@ -76,8 +76,8 @@ Examples of boot-time violations that **prevent startup**:
 | `SUI_RPC_URL` | `http://127.0.0.1:9000` | Local/fullnode RPC |
 | `SUI_FAUCET_URL` | local | devnet faucet |
 | `SUI_PRIVATE_KEY` / `SUI_MNEMONIC` | — | Server-side signer (**secret**, never logged) |
-| `MOVA_PACKAGE_ID` | — | Deployed Move package (Phase 2) |
-| `MOVA_SMART_WALLET_ADDRESS` | — | Smart-wallet object address (Phase 2) |
+| `MOVA_PACKAGE_ID` | `0x2baa7a78…a55c2` | Deployed Move package — **published on testnet** (see `contracts/mova/Published.toml`, verify with `npx tsx scripts/verify-publish.ts`) |
+| `MOVA_SMART_WALLET_ADDRESS` | `0x72e285da…9efe35` | Package `UpgradeCap` object id (MOVA ownership anchors at the user's Sui address) |
 
 ### Settlement
 

@@ -6,6 +6,8 @@ dist/
 build/
 out/
 *.tsbuildinfo
+# Next.js build/runtime output (incl. .next/trace, cache, chunks — never commit)
+.next/
 
 # Environment (never commit secrets)
 .env

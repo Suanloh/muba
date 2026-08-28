@@ -15,11 +15,17 @@ Modules talk only through these contracts. The AI layer appears exactly once
 | `IntentParser` *(AI/Gemini)* | `parse(rawText, ctx)` | `ParsedIntentProposal` | Suggestion only |
 | `QrDecoder` *(deterministic, local)* | `decode(payload)` | `QrDecoded` | Local EMVCo decode (`packages/qr`); trusted amount/account |
 | `IntentValidator` | `validate(proposal, intent)` | `ParsedIntent` | Pure, deterministic; recomputes money |
-| `RouteDiscovery` | `discover(intent, parsed)` | `RouteCandidate[]` | Uses `MarketDataProvider` |
-| `RouteOptimizer` | `optimize(candidates, criterion)` | `{ routes, selected }` | Pure ranking |
+| `RouteDiscovery` | `discover(intent, parsed)` | `RouteCandidate[]` | Uses `MarketDataProvider`; skips unpriceable routes |
+| `RouteOptimizer` | `optimize(candidates, criterion, options?)` | `RouteOptimizationResult` | Pure ranking; `options.weights` = user preference |
+
+`RouteOptimizationResult` = ranked `routes[]` (each with `selectionScore`,
+`selectionReason`, `factorScores`), `selected`, effective `weights`,
+`comparison[]`, `savings` (`RouteSavings`). Full engine spec in
+[`docs/routing.md`](routing.md).
 | `ComplianceEngine` | `assess(intent, route)` | `ComplianceAssessment` | Fail-closed `ALLOW/REVIEW/BLOCK` |
-| `RiskEngine` | `assess(intent, route, portfolio)` | `RiskAssessment` | Deterministic band + signals |
-| `HedgingEngine` | `recommend(parsed, risk)` | `HedgingPlan` | Wraps `HedgingProvider` |
+| `FinancialRiskEngine` (`RiskEngine`) | `assess(intent, route)` | `RiskAssessment` | Deterministic 5-signal score + band + decision (Phase 6) |
+| `HedgeEvaluator` (`HedgingEngine`) | `evaluate(intent, route, risk)` | `HedgeEvaluation` | Wraps `HedgingProvider`; route vs route+hedge |
+| `PaymentAdvisor` (`HedgedRouteEngine`) | `compute(intent, parsed, criterion)` | `PaymentRecommendation` | Final recommendation: route + risk + hedge + total cost |
 | `ApprovalService` | `createRequest` / `recordDecision` / `getStatus` | `ApprovalRequest` | Threshold + expiry |
 | `ExecutionService` | `buildPlan` / `simulate` / `execute` | `SettlementTransaction` | Only value-moving path |
 | `PaymentStateMachine` | `apply(from, event)` | `TransitionOutcome` | Guarded transitions |
