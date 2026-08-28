@@ -52,6 +52,12 @@ export interface PaymentPlan {
   optimization: BuildPlanResult["optimization"];
 }
 
+/** The deterministic risk + hedge view shown in the RiskAssessmentPanel. */
+export interface RiskView {
+  recommendation: BuildPlanResult["recommendation"];
+  comparisons: BuildPlanResult["comparisons"];
+}
+
 function toParsedIntent(record: PaymentRecord): ParsedIntent {
   return {
     id: `pi-${record.id}`,

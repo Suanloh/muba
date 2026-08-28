@@ -64,8 +64,9 @@ const CODE_TO_FAILURE: Partial<Record<ErrorCode, ExecutionFailureCode>> = {
   ERR_INTEGRATION_UNAVAILABLE: "INTEGRATION_UNAVAILABLE",
   ERR_COMPLIANCE_UNAVAILABLE: "INTEGRATION_UNAVAILABLE",
   ERR_ROUTING_FAILED: "INTEGRATION_UNAVAILABLE",
-  ERR_RISK_BLOCKED: "INTEGRATION_UNAVAILABLE",
-  ERR_COMPLIANCE_BLOCKED: "INTEGRATION_UNAVAILABLE",
+  // Deterministic blocking engines
+  ERR_COMPLIANCE_BLOCKED: "COMPLIANCE_BLOCKED",
+  ERR_RISK_BLOCKED: "RISK_BLOCKED",
   // Idempotency
   ERR_IDEMPOTENCY_VIOLATION: "IDEMPOTENCY_VIOLATION",
   ERR_APPROVAL_EXPIRED: "APPROVAL_EXPIRED",
@@ -87,7 +88,7 @@ function retryableFor(code: ExecutionFailureCode, txDigest: string | null | unde
     case "INTEGRATION_UNAVAILABLE":
       return true;
     default:
-      return false; // TRANSACTION_FAILED / INVALID_RECIPIENT / IDEMPOTENCY / UNKNOWN
+      return false; // TRANSACTION_FAILED / INVALID_RECIPIENT / BLOCKED / IDEMPOTENCY / UNKNOWN
   }
 }
 
@@ -180,6 +181,10 @@ export function failureUserMessage(f: ExecutionFailureInfo): string {
       return `Settlement timed out: ${f.message}`;
     case "INTEGRATION_UNAVAILABLE":
       return `A MOVA engine was unavailable: ${f.message}`;
+    case "COMPLIANCE_BLOCKED":
+      return `Blocked by compliance: ${f.message}`;
+    case "RISK_BLOCKED":
+      return `Blocked by the risk engine: ${f.message}`;
     case "IDEMPOTENCY_VIOLATION":
       return `Duplicate execution blocked: ${f.message}`;
     case "APPROVAL_EXPIRED":

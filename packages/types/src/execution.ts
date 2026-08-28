@@ -106,6 +106,8 @@ export type ExecutionFailureCode =
   | "TRANSACTION_FAILED" // on-chain submission/settlement failed
   | "TIMEOUT" // settlement did not confirm within the window
   | "INTEGRATION_UNAVAILABLE" // an external engine/provider was unavailable
+  | "COMPLIANCE_BLOCKED" // a deterministic compliance engine BLOCKED the payment
+  | "RISK_BLOCKED" // the deterministic risk engine BLOCKED the payment
   | "IDEMPOTENCY_VIOLATION" // duplicate/expired/replayed execution attempt
   | "APPROVAL_EXPIRED"
   | "UNKNOWN";

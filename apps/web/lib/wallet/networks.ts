@@ -49,11 +49,14 @@ export const ENABLE_DEMO_WALLET =
 
 /**
  * Web settlement mode:
- * - "real" (default) — attempts a REAL on-chain settlement through the
- *   connected wallet when the flow is approved; falls back to simulated (with
- *   the reason recorded) when the wallet can't submit (e.g. no testnet gas).
- * - "simulated" — always simulated (deterministic demo, no chain interaction).
- * Set NEXT_PUBLIC_SETTLEMENT_MODE=simulated to force the deterministic demo.
+ * - "simulated" (default) — deterministic browser demo. Every payment reaches
+ *   SETTLED with a receipt + audit trail and is clearly labeled "simulated
+ *   (no value moves)"; no digest is ever fabricated.
+ * - "real" — attempts a REAL on-chain settlement through the connected wallet;
+ *   falls back to simulated (with the reason recorded) when the wallet can't
+ *   submit (e.g. no testnet gas). Use a funded testnet wallet. Real testnet
+ *   settlement is always provable via `npx tsx scripts/settle-real.ts`.
+ * Set NEXT_PUBLIC_SETTLEMENT_MODE=real (in apps/web/.env.local) to opt in.
  */
 export const WEB_SETTLEMENT_MODE: "simulated" | "real" =
-  process.env.NEXT_PUBLIC_SETTLEMENT_MODE === "simulated" ? "simulated" : "real";
+  process.env.NEXT_PUBLIC_SETTLEMENT_MODE === "real" ? "real" : "simulated";

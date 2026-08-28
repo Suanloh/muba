@@ -34,9 +34,9 @@ import { shortAddress } from "@/lib/pipeline/format";
 import { Badge, Button, Card } from "./ui";
 
 const EXAMPLES = [
+  "Pay RM200 to this merchant.",
   "Pay Alice $200 USDC.",
   "Send RM100 to Bob.",
-  "Pay this merchant.",
   "Send 50 USDC to this wallet on Sui.",
   "Pay 10 SUI to @treasury for payroll by Friday",
 ];
@@ -292,6 +292,8 @@ function IntentCard({ draft, submittedId }: { draft: Draft; submittedId: string 
   const { validated, explanation } = draft;
   const ok = validated.ok;
   const needsConversion = validated.ok && validated.canonicalAmount === null;
+  const ambiguousRecipient = validated.proposal?.recipient?.ambiguous === true;
+  const fiatAmount = validated.canonicalAmount === null && validated.proposal?.amountRaw != null;
 
   return (
     <div
@@ -345,9 +347,16 @@ function IntentCard({ draft, submittedId }: { draft: Draft; submittedId: string 
         </ul>
       )}
 
+      {ambiguousRecipient && (
+        <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+          <span className="font-semibold">Merchant not resolved.</span> Scan the merchant’s QR below to
+          confirm the exact recipient {fiatAmount ? "and settle the fiat amount in a Sui token (USDC/SUI/MOV)" : "in a Sui token"}.
+        </p>
+      )}
       {needsConversion && (
         <p className="mt-2 text-xs text-amber-700">
-          Fiat amount — choose a Sui token (USDC or SUI) so it can be confirmed and settled.
+          Fiat amount — settle it in a Sui token (USDC/SUI/MOV) via the QR scanner below, or type the
+          token amount instead (e.g. “Pay 200 USDC”).
         </p>
       )}
 

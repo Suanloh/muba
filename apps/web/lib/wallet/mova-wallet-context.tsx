@@ -38,7 +38,6 @@ import {
   type MovaNetworkState,
   type MovaWalletProvider,
   type OwnershipProof,
-  type SignatureResult,
   type WalletAccount,
   type WalletConnectionState,
 } from "@mova/wallet";
@@ -61,7 +60,6 @@ export interface MovaWalletContextValue {
   switchNetwork: (network: DappNetwork) => void;
   requestOwnershipProof: () => Promise<OwnershipProof>;
   verifyOwnershipProof: (proof: OwnershipProof) => Promise<boolean>;
-  signMessage: (message: string) => Promise<SignatureResult>;
   /**
    * Submit a REAL transaction through the connected wallet. The wallet user
    * must approve the signature. Only called after the deterministic gate
@@ -72,7 +70,6 @@ export interface MovaWalletContextValue {
   ) => Promise<{ ok: boolean; digest: string | null; simulated: boolean; error: string | null }>;
   provider: MovaWalletProvider | null;
   error: string | null;
-  clearError: () => void;
 }
 
 const MovaWalletContext = createContext<MovaWalletContextValue | null>(null);
@@ -169,19 +166,6 @@ export function MovaWalletProvider({ children }: { children: React.ReactNode }) 
     [dAppKit],
   );
 
-  const signMessage = useCallback(
-    async (message: string): Promise<SignatureResult> => {
-      if (!account) {
-        throw new MovaError(ErrorCode.WALLET_NOT_CONNECTED, "Connect a wallet first.");
-      }
-      const { signature } = await dAppKit.signPersonalMessage({
-        message: new TextEncoder().encode(message),
-      });
-      return { address: account.address, message, signature, signedAt: Date.now() };
-    },
-    [account, dAppKit],
-  );
-
   const executeTransaction = useCallback(
     async (transaction: Transaction) => {
       if (!account) {
@@ -260,8 +244,6 @@ export function MovaWalletProvider({ children }: { children: React.ReactNode }) 
     };
   }, [account, wallet, dAppKit]);
 
-  const clearError = useCallback(() => setError(null), []);
-
   const value = useMemo<MovaWalletContextValue>(
     () => ({
       connection,
@@ -273,13 +255,11 @@ export function MovaWalletProvider({ children }: { children: React.ReactNode }) 
       switchNetwork,
       requestOwnershipProof,
       verifyOwnershipProof,
-      signMessage,
       executeTransaction,
       provider,
       error,
-      clearError,
     }),
-    [connection, network, appNetwork, wallets, connect, disconnect, switchNetwork, requestOwnershipProof, verifyOwnershipProof, signMessage, executeTransaction, provider, error, clearError],
+    [connection, network, appNetwork, wallets, connect, disconnect, switchNetwork, requestOwnershipProof, verifyOwnershipProof, executeTransaction, provider, error],
   );
 
   return <MovaWalletContext.Provider value={value}>{children}</MovaWalletContext.Provider>;

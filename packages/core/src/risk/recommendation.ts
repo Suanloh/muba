@@ -11,6 +11,7 @@
  * comparison tells you whether to add a hedge and at what cost. Everything is
  * deterministic and explainable — no LLM, no randomness.
  */
+import { MovaError, ErrorCode } from "@mova/logger";
 import type {
   HedgingProvider,
   MarketDataProvider,
@@ -143,7 +144,10 @@ export class HedgedRouteEngine {
     }
 
     if (!selectedEval) {
-      throw new Error("no route selected — cannot produce a payment recommendation");
+      throw new MovaError(
+        ErrorCode.ROUTING_FAILED,
+        "no route selected — cannot produce a payment recommendation (routing or market data unavailable)",
+      );
     }
 
     const recommendation = this.buildRecommendation(intent, selectedEval.evaluation, selectedEval.route);

@@ -5,7 +5,7 @@ import { Providers } from "./providers";
 export const metadata: Metadata = {
   title: "MOVA — Autonomous Payment Agent",
   description:
-    "AI-native autonomous payment agent on Sui. Phase 1: wallet connectivity, Sui ownership model, and the app shell.",
+    "MOVA lets users describe what they want to pay in plain language. It finds the best route, checks compliance, manages financial exposure, and settles the payment on Sui — while keeping a human in control.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

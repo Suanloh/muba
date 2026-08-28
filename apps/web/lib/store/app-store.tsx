@@ -28,7 +28,7 @@ import { useMovaWallet } from "@/lib/wallet/mova-wallet-context";
 import { EXPECTED_NETWORK, WEB_SETTLEMENT_MODE } from "@/lib/wallet/networks";
 import { buildTransferTransaction } from "@/lib/pipeline/real-settlement";
 import { hasSufficientBalance, querySuiBalance } from "@/lib/pipeline/balance";
-import { buildPaymentPlan, type PaymentPlan } from "@/lib/pipeline/execution-engine";
+import { buildPaymentPlan, type PaymentPlan, type RiskView } from "@/lib/pipeline/execution-engine";
 import {
   approveFlow,
   createFlow,
@@ -39,7 +39,6 @@ import {
   simulateAiAutoExecute,
   type RealSettlementAttempt,
 } from "@/lib/pipeline/demo-pipeline";
-import { type RiskView } from "@/lib/pipeline/risk-recommendation";
 
 export interface AppNotification {
   id: string;
@@ -196,13 +195,13 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       const blocked =
         preview.compliance.decision === "BLOCK" || preview.risk.decision === "BLOCK";
       if (blocked) {
-        const reason =
-          preview.compliance.decision === "BLOCK"
-            ? preview.compliance.explanation
-            : `Risk decision ${preview.risk.decision}: ${preview.risk.explanation}`;
+        const complianceBlocked = preview.compliance.decision === "BLOCK";
+        const reason = complianceBlocked
+          ? preview.compliance.explanation
+          : `Risk decision ${preview.risk.decision}: ${preview.risk.explanation}`;
         const failure: ExecutionFailureInfo = {
-          code: "INTEGRATION_UNAVAILABLE",
-          stage: preview.compliance.decision === "BLOCK" ? "COMPLIANCE" : "RISK_HEDGE",
+          code: complianceBlocked ? "COMPLIANCE_BLOCKED" : "RISK_BLOCKED",
+          stage: complianceBlocked ? "COMPLIANCE" : "RISK_HEDGE",
           message: reason,
           userActionable: false,
           retryable: false,
@@ -473,18 +472,30 @@ export function useAppStore(): AppStoreValue {
 
 /** Classify a plan-build failure into a structured ExecutionFailureInfo. */
 function classifyEngineFailure(err: unknown, _record: PaymentRecord): ExecutionFailureInfo {
-  const code =
-    err instanceof MovaError
-      ? err.code === "ERR_COMPLIANCE_BLOCKED" || err.code === "ERR_COMPLIANCE_UNAVAILABLE" || err.code === "ERR_ROUTING_FAILED"
-        ? "INTEGRATION_UNAVAILABLE"
-        : "UNKNOWN"
-      : "UNKNOWN";
+  let code: ExecutionFailureInfo["code"] = "UNKNOWN";
+  let stage: ExecutionFailureInfo["stage"] = "ROUTE_DISCOVERY";
+  if (err instanceof MovaError) {
+    if (err.code === "ERR_COMPLIANCE_BLOCKED") {
+      code = "COMPLIANCE_BLOCKED";
+      stage = "COMPLIANCE";
+    } else if (err.code === "ERR_RISK_BLOCKED") {
+      code = "RISK_BLOCKED";
+      stage = "RISK_HEDGE";
+    } else if (
+      err.code === "ERR_COMPLIANCE_UNAVAILABLE" ||
+      err.code === "ERR_ROUTING_FAILED" ||
+      err.code === "ERR_INTEGRATION_UNAVAILABLE"
+    ) {
+      code = "INTEGRATION_UNAVAILABLE";
+      stage = err.code === "ERR_COMPLIANCE_UNAVAILABLE" ? "COMPLIANCE" : "ROUTE_DISCOVERY";
+    }
+  }
   return {
     code,
-    stage: "ROUTE_DISCOVERY",
+    stage,
     message: err instanceof Error ? err.message : String(err),
     userActionable: false,
-    retryable: false,
+    retryable: code === "INTEGRATION_UNAVAILABLE",
     at: Date.now(),
   };
 }

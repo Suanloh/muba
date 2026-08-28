@@ -15,7 +15,8 @@
     "lint": "npm run lint --workspaces --if-present",
     "smoke": "tsx scripts/phase0-smoke.ts",
     "routing:demo": "tsx scripts/routing-demo.ts",
-    "risk:demo": "tsx scripts/risk-hedge-demo.ts"
+    "risk:demo": "tsx scripts/risk-hedge-demo.ts",
+    "integration": "tsx --tsconfig apps/web/tsconfig.json scripts/integration-test.ts"
   },
   "devDependencies": {
     "@mysten/sui": "^2.27.0",

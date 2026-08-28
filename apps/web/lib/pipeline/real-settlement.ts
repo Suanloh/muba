@@ -25,14 +25,3 @@ export function buildTransferTransaction(record: PaymentRecord, sender: string):
   return tx;
 }
 
-/**
- * Extract the digest from a dapp-kit `signAndExecuteTransaction` result
- * (a `$kind: "Transaction" | "FailedTransaction"` discriminated union).
- */
-export function digestFromResult(res: {
-  $kind: string;
-  Transaction?: { digest: string };
-  FailedTransaction?: { digest: string };
-}): string | null {
-  return res.$kind === "Transaction" ? (res.Transaction?.digest ?? null) : (res.FailedTransaction?.digest ?? null);
-}

@@ -1,20 +1,73 @@
 # MOVA — AI-native Autonomous Payment Agent
 
-> **Phase 1 (wallet, ownership & app shell) delivered.** A working MOVA shell now
-> connects real Sui wallets, establishes the Sui ownership layer
-> (`@mova/wallet` + `docs/ownership.md`), and enforces the safety boundary
-> (Intent → Validation → Approval → Wallet authz → Execution). Payment
-> *execution* is kept for later phases — settlement is simulated and never
-> fabricates a digest.
+> **MOVA lets users describe what they want to pay in plain language. MOVA finds
+> the best route, checks compliance, manages financial exposure, and settles the
+> payment on Sui — while keeping a human in control.**
 
-MOVA turns a human payment intent (typed or scanned from a local EMVCo QR) into
-an audited, approved, executed settlement on **Sui (Mainnet target)**, with
-hedging via **Thetanuts V4 / Optionbook**.
+MOVA turns a human payment intent (typed in natural language, or scanned from a
+local EMVCo QR) into an audited, approved, executed settlement on **Sui**, with
+risk management via **Thetanuts**-style structured products.
 
 ```
 User Intent → AI Parsing → Route Discovery → Route Optimization → Compliance
-→ Risk/Hedging → Human Approval → Execution → Sui Settlement → Status/Audit
+→ Risk/Hedging → Human Approval → Wallet Authz → Sui Settlement → Status/Audit
 ```
+
+Everything an AI suggests is *proposal only*; deterministic engines validate and
+enforce; a human approves the exact plan digest; the wallet signs; only then does
+value move.
+
+## The story (one minute for a judge)
+
+1. A user **says** (or scans) what they want to pay — e.g. *"Pay RM200 to this
+   merchant."*
+2. MOVA **parses** the intent (natural language, or a local **EMVCo QR** — no
+   third-party API), and shows what it understood.
+3. MOVA **finds the cheapest route** across rails and shows the math.
+4. MOVA runs a fail-closed **regulatory compliance** screen.
+5. MOVA **scores financial exposure** (VaR / FX) and decides whether a
+   **Thetanuts hedge** is worth it — and explains it.
+6. A **human approves** the plan digest; the **wallet signs**.
+7. The payment **settles on Sui** — with a receipt, live status, and an
+   **append-only audit trail** explaining every decision.
+
+## Run the demo
+
+```bash
+npm install
+npm run dev -w @mova/web        # open http://localhost:3000
+```
+
+Connect the built-in **MOVA Demo Wallet**, then:
+
+| Step | What happens on screen |
+| --- | --- |
+| 1. Say it | Click **“Pay RM200 to this merchant.”** — MOVA parses the fiat amount and flags the unresolved merchant. |
+| 2. Scan it | Paste the demo EMVCo payload in **Pay by QR** → *Decode payload* → **Confirm payment**. |
+| 3. Review | MOVA shows the route + cost math, compliance verdict, risk score, and hedge decision. |
+| 4. Approve | Tick *“I understand…”*, click **Approve payment**, then **Authorize & execute**. |
+| 5. Verify | The 9-step lifecycle ends **SETTLED**; a **receipt**, the **audit trail**, and the **explanation** appear. |
+
+One-click **Reset demo** clears the flow so you can run it again. Simulated
+settlement is labeled honestly (“no value moves, no fabricated digest”); real
+testnet settlement is one env flag + a funded wallet away, or provable directly
+with `npx tsx scripts/settle-real.ts` (real confirmed on-chain digest).
+
+## Verify the product (all offline & deterministic)
+
+```bash
+npm run typecheck    # 0 errors across all packages + web
+npm test             # 180 tests (ai, core, integrations, qr, wallet)
+npm run integration  # 94 checks: full NL + QR pipes, 11 failure modes, 6 AI-safety invariants
+npm run smoke        # Phase 0 smoke: 37 checks
+npm run build -w @mova/web   # clean production build
+```
+
+`npm run integration` is the judge-facing harness: it drives the **exact web
+pipeline** end-to-end and proves the 8 differentiators, every failure class, and
+the AI-safety boundary (AI can't execute, can't bypass compliance, can't approve
+its own payment, can't modify an approved spec). See
+[`docs/judge-narrative.md`](docs/judge-narrative.md).
 
 ## Stack
 
@@ -71,6 +124,7 @@ skills/               reusable skill pack (safety + architecture guidance)
 | [`docs/integration-strategy.md`](docs/integration-strategy.md) | Sui / Thetanuts / market-data / screening: mock → real strategy |
 | [`docs/conventions.md`](docs/conventions.md) | Logging & error-handling conventions |
 | [`docs/roadmap.md`](docs/roadmap.md) | Phased delivery plan (Phase 1 → n) |
+| [`docs/judge-narrative.md`](docs/judge-narrative.md) | **Final demo runbook** — differentiator → sponsor mapping, demo script, failure/safety matrix |
 
 ## Legacy reference (do not use for MOVA execution)
 
