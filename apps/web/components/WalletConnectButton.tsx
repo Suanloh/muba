@@ -35,7 +35,7 @@ export function WalletConnectButton() {
       {open && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-40 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+          <div className="absolute right-0 z-40 mt-2 w-72 rounded-[14px] border border-hairline bg-surface p-3 shadow-pop">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
               Choose a Sui wallet
             </p>
@@ -64,7 +64,7 @@ export function WalletConnectButton() {
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={w.icon} alt="" className="h-7 w-7 rounded-lg" />
                   ) : (
-                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-200 text-xs font-bold">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-surface-2 text-xs font-bold">
                       {w.name[0]?.toUpperCase()}
                     </span>
                   )}

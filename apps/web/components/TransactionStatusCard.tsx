@@ -113,7 +113,7 @@ export function TransactionStatusCard() {
                           ? "border-sky-500 bg-sky-500"
                           : terminal && isLast
                             ? "border-emerald-500 bg-emerald-500"
-                            : "border-slate-300 bg-white")
+                            : "border-hairline-strong bg-surface")
                     }
                   />
                   <div className="min-w-0 flex-1">

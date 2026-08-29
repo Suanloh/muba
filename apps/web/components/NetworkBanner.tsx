@@ -16,7 +16,7 @@ export function NetworkBanner() {
 
   if (connection.status !== "connected") {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+      <div className="rounded-[12px] border border-hairline bg-surface p-4 text-sm text-muted">
         <p className="font-medium">Network</p>
         <p className="mt-1 text-xs">
           Expected <Badge tone="blue">{network.expected}</Badge> — connect a wallet to detect its chain.
@@ -26,7 +26,7 @@ export function NetworkBanner() {
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm">
+    <div className="rounded-[12px] border border-hairline bg-surface p-4 text-sm">
       <p className="font-medium text-slate-700">Network</p>
       <div className="mt-2 space-y-2">
         <div className="flex items-center justify-between">

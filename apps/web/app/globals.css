@@ -2,10 +2,148 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============ MOVA TOKENS ============ */
 :root {
+  --bark: #15110e;
+  --vellum: #f6f1e8;
+  --signal: #6c7bff;
+  --ledger: #1fae7a;
+  --ember: #e8a23d;
+  --alarm: #e14b3d;
+
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --font-body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas,
+    monospace;
+
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Dark is the default theme (also explicit via data-theme="dark"). */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: var(--bark);
+  --bg-translucent: rgba(21, 17, 14, 0.78);
+  --bg-raised: #1b1613;
+  --surface: #1f1a16;
+  --surface-2: #262019;
+  --border: rgba(246, 241, 232, 0.1);
+  --border-strong: rgba(246, 241, 232, 0.18);
+  --text: #f4efe7;
+  --text-muted: #afa79b;
+  --text-faint: #7a7266;
+
+  --signal-text: #98a2ff;
+  --signal-bg: rgba(108, 123, 255, 0.14);
+  --signal-border: rgba(108, 123, 255, 0.38);
+  --ledger-text: #3ecb98;
+  --ledger-bg: rgba(31, 174, 122, 0.16);
+  --ledger-border: rgba(62, 203, 152, 0.42);
+  --ember-text: #f2be6e;
+  --ember-bg: rgba(232, 162, 61, 0.16);
+  --ember-border: rgba(242, 190, 110, 0.42);
+  --alarm-text: #ff8577;
+  --alarm-bg: rgba(225, 75, 61, 0.16);
+  --alarm-border: rgba(255, 133, 119, 0.42);
+
+  --chain-sui: #6fd6ff;
+  --chain-eth: #b0a6ff;
+  --chain-sol: #7ce8b8;
+  --chain-poly: #f0a0d8;
+  --chain-arb: #7fc4e0;
+  --chain-base: #ffb088;
+
+  --code-bg: #100d0a;
+  --code-text: #e8e2d8;
+
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.03) inset,
+    0 12px 28px -16px rgba(0, 0, 0, 0.65);
+  --shadow-pop: 0 24px 60px -18px rgba(0, 0, 0, 0.7);
+}
+
+:root[data-theme="light"] {
   color-scheme: light;
+  --bg: var(--vellum);
+  --bg-translucent: rgba(246, 241, 232, 0.78);
+  --bg-raised: #efe9dc;
+  --surface: #fffdf8;
+  --surface-2: #fbf6ec;
+  --border: rgba(21, 17, 14, 0.1);
+  --border-strong: rgba(21, 17, 14, 0.18);
+  --text: #1c1712;
+  --text-muted: #6b6459;
+  --text-faint: #9a9285;
+
+  --signal-text: #4b4fd1;
+  --signal-bg: rgba(75, 79, 209, 0.1);
+  --signal-border: rgba(75, 79, 209, 0.3);
+  --ledger-text: #127a54;
+  --ledger-bg: rgba(18, 122, 84, 0.1);
+  --ledger-border: rgba(18, 122, 84, 0.3);
+  --ember-text: #9c6512;
+  --ember-bg: rgba(156, 101, 18, 0.1);
+  --ember-border: rgba(156, 101, 18, 0.3);
+  --alarm-text: #c23a2d;
+  --alarm-bg: rgba(194, 58, 45, 0.1);
+  --alarm-border: rgba(194, 58, 45, 0.3);
+
+  --chain-sui: #0e86bf;
+  --chain-eth: #5a4fd6;
+  --chain-sol: #0e8a72;
+  --chain-poly: #a63ba0;
+  --chain-arb: #1d7a9c;
+  --chain-base: #c2582e;
+
+  --code-bg: #f2ede1;
+  --code-text: #3a332b;
+
+  --shadow-card: 0 1px 2px rgba(21, 17, 14, 0.05),
+    0 12px 28px -18px rgba(21, 17, 14, 0.16);
+  --shadow-pop: 0 24px 60px -18px rgba(21, 17, 14, 0.22);
+}
+
+/* ============ BASE ============ */
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  min-height: 100vh;
+  transition: background 0.35s var(--ease), color 0.35s var(--ease);
+}
+
+::selection {
+  background: var(--signal-bg);
+  color: var(--text);
+}
+
+:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Thin, theme-aware scrollbars for the scrollable panels */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
 }
