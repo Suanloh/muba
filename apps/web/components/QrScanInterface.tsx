@@ -29,6 +29,7 @@ import {
   qrParserContext,
   QR_TOKEN_OPTIONS,
 } from "@/lib/pipeline/qr-payment";
+import { scrollToPlanReview } from "@/lib/pipeline/scroll-to-review";
 import { shortAddress } from "@/lib/pipeline/format";
 import { Badge, Button, Card } from "./ui";
 
@@ -234,6 +235,8 @@ export function QrScanInterface() {
     try {
       const record = await submitIntent(text);
       setSubmittedId(record.id);
+      // Reveal the plan review so the user can confirm the preview + approve.
+      scrollToPlanReview();
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : String(err));
     } finally {

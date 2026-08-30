@@ -15,7 +15,7 @@ const KIND_DOT: Record<string, string> = {
 };
 
 export function NotificationBell() {
-  const { notifications, notificationFeed, dismissNotification, soundEnabled, setSoundEnabled } =
+  const { notifications, notificationFeed, dismissFeedNotification, soundEnabled, setSoundEnabled } =
     useAppStore();
   const [open, setOpen] = useState(false);
 
@@ -74,7 +74,7 @@ export function NotificationBell() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => dismissNotification(n.id)}
+                      onClick={() => dismissFeedNotification(n.id)}
                       aria-label="Dismiss"
                       className="text-[11px] text-faint hover:text-ink"
                     >

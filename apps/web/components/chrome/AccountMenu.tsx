@@ -1,8 +1,8 @@
 "use client";
 /**
  * Wallet pill in the header — the "account" entry point. Shows a compact
- * connected state (Sui or EVM) with a menu, or a primary "Connect wallet"
- * button opening the grouped multi-ecosystem picker.
+ * connected state (Sui or EVM) with the wallet value + a menu, or a primary
+ * "Connect wallet" button opening the grouped multi-ecosystem picker.
  */
 import { useState } from "react";
 import { useMovaWallet } from "@/lib/wallet/mova-wallet-context";
@@ -12,14 +12,12 @@ import { shortAddress } from "@/lib/pipeline/format";
 import { formatUsd, MOCK_PORTFOLIO } from "@/lib/portfolio/mock-data";
 import { Button } from "@/components/ui";
 import { AccountPanel } from "./AccountPanel";
-import { WalletPortfolioPopover } from "@/components/portfolio/WalletPortfolioPopover";
 
 export function AccountMenu() {
   const sui = useMovaWallet();
   const evm = useEVM();
   const { setView } = useAppStore();
   const [open, setOpen] = useState(false);
-  const [hover, setHover] = useState(false);
 
   const suiConnected = sui.connection.status === "connected" && sui.connection.account;
   const evmConnected = evm.connection.status === "connected";
@@ -30,21 +28,12 @@ export function AccountMenu() {
     : evmConnected
       ? evm.connection.address
       : null;
-  const providerName = suiConnected
-    ? sui.connection.providerName ?? "Sui wallet"
-    : evmConnected
-      ? evm.connection.provider?.name ?? "EVM wallet"
-      : null;
   const dot = suiConnected ? "var(--ledger)" : evmConnected ? "var(--chain-base)" : "var(--text-faint)";
 
   const portfolio = MOCK_PORTFOLIO;
 
   return (
-    <div
-      className="relative"
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-    >
+    <div className="relative">
       {suiConnected || evmConnected ? (
         <button
           type="button"
@@ -53,7 +42,9 @@ export function AccountMenu() {
           className="flex h-9 max-w-[220px] items-center gap-2 rounded-full border border-hairline bg-surface px-3 text-xs transition hover:border-hairline-strong"
         >
           <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: dot }} aria-hidden="true" />
-          <span className="hidden truncate font-medium text-ink sm:inline">{providerName}</span>
+          <span className="hidden truncate font-medium text-ink sm:inline">
+            {formatUsd(MOCK_PORTFOLIO.totalUsd)}
+          </span>
           <span className="truncate font-mono text-muted">{address ? shortAddress(address, 6, 4) : "—"}</span>
         </button>
       ) : (
@@ -61,9 +52,6 @@ export function AccountMenu() {
           {connecting ? "Connecting…" : "Connect wallet"}
         </Button>
       )}
-
-      {/* Portfolio hover popover (desktop) — hidden while the account menu is open. */}
-      {hover && !open && <WalletPortfolioPopover onDone={() => setHover(false)} />}
 
       {open && (
         <>

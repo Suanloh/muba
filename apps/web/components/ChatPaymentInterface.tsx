@@ -30,6 +30,7 @@ import {
   intentSummary,
   nlParserContext,
 } from "@/lib/pipeline/nl-payment";
+import { scrollToPlanReview } from "@/lib/pipeline/scroll-to-review";
 import { shortAddress } from "@/lib/pipeline/format";
 import { Badge, Button, Card } from "./ui";
 
@@ -90,6 +91,8 @@ export function ChatPaymentInterface() {
     try {
       const record = await submitIntent(text);
       submittedRef.current = record.id;
+      // Reveal the plan review so the user can confirm the preview + approve.
+      scrollToPlanReview();
       setConversation((prev) =>
         appendLocalTurn(
           appendLocalTurn(prev, "mova", `Created — ${intentSummary(validated)}. Review and approve it in the flow below.`),
@@ -116,6 +119,9 @@ export function ChatPaymentInterface() {
     if (result.meta === "none") {
       if (result.validated && result.explanation) {
         setDraft({ validated: result.validated, explanation: result.explanation });
+        // The send button leads the user into the review flow (confirm
+        // payment → payment preview → approve & settle).
+        if (canConfirmIntent(result.validated)) scrollToPlanReview();
       }
       return;
     }

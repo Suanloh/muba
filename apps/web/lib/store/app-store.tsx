@@ -86,6 +86,8 @@ interface AppStoreValue {
   execute: (recordId: string) => Promise<PaymentRecord>;
   attemptAiAutoExecute: (recordId: string) => GateVerdict;
   dismissNotification: (id: string) => void;
+  /** Dismiss a single persistent feed item (notification bell ✕). */
+  dismissFeedNotification: (id: string) => void;
   clearAll: () => void;
   /** UI prefs — sound on/off, balance privacy, active nav view. */
   soundEnabled: boolean;
@@ -192,6 +194,10 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
 
   const dismissNotification = useCallback((id: string) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
+  }, []);
+
+  const dismissFeedNotification = useCallback((id: string) => {
+    setNotificationFeed((prev) => prev.filter((n) => n.id !== id));
   }, []);
 
   const updateRecord = useCallback((record: PaymentRecord) => {
@@ -535,6 +541,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       execute,
       attemptAiAutoExecute,
       dismissNotification,
+      dismissFeedNotification,
       clearAll,
       soundEnabled,
       setSoundEnabled,
@@ -563,6 +570,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       execute,
       attemptAiAutoExecute,
       dismissNotification,
+      dismissFeedNotification,
       clearAll,
       soundEnabled,
       setSoundEnabled,
