@@ -55,6 +55,20 @@ export function defaultDappNetwork(): DappNetwork {
   return MOVA_ENV === "dev" ? "devnet" : MOVA_ENV === "mainnet" ? "mainnet" : "testnet";
 }
 
+/** Published MOVA `mova_owned` package on Sui testnet (from Published.toml). */
+const PUBLISHED_MOVA_PACKAGE_TESTNET =
+  "0x2baa7a782929b0b2af8cbbfeb20d7f75ac89db18103ae9f2e029858156ea55c2";
+
+/**
+ * MOVA Move package id for the current runtime. An explicit
+ * NEXT_PUBLIC_MOVA_PACKAGE_ID wins; on testnet we default to the REAL published
+ * package (verified by scripts/verify-publish.ts). Empty elsewhere → the plain
+ * transfer PTB is used (no on-chain record mint).
+ */
+export const MOVA_PACKAGE_ID: string =
+  (process.env.NEXT_PUBLIC_MOVA_PACKAGE_ID ?? "").trim() ||
+  (MOVA_ENV === "testnet" ? PUBLISHED_MOVA_PACKAGE_TESTNET : "");
+
 export const ENABLE_DEMO_WALLET =
   (process.env.NEXT_PUBLIC_ENABLE_DEMO_WALLET ?? "true") === "true";
 

@@ -27,7 +27,7 @@ import type {
   SuiAddress,
 } from "@mova/wallet";
 import { useMovaWallet } from "@/lib/wallet/mova-wallet-context";
-import { EXPECTED_NETWORK, WEB_SETTLEMENT_MODE } from "@/lib/wallet/networks";
+import { EXPECTED_NETWORK, MOVA_PACKAGE_ID, WEB_SETTLEMENT_MODE } from "@/lib/wallet/networks";
 import { playUiSound, setSoundMuted } from "@/components/notifications/Sound";
 
 /** Active top-level view rendered inside the app shell (sidebar / bottom bar). */
@@ -40,7 +40,7 @@ export interface PlanRunState {
   status: PlanRunStatus;
   entries: LiveRunEntry[];
 }
-import { buildTransferTransaction } from "@/lib/pipeline/real-settlement";
+import { buildMovaOwnedTransaction, buildTransferTransaction } from "@/lib/pipeline/real-settlement";
 import { hasSufficientBalance, querySuiBalance } from "@/lib/pipeline/balance";
 import { buildMemWalInput, memWalStore, type MemWalStoreResult } from "@/lib/pipeline/memwal";
 import { type PaymentPlan, type RiskView } from "@/lib/pipeline/execution-engine";
@@ -477,11 +477,19 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
           WEB_SETTLEMENT_MODE === "real"
             ? async (spec: typeof plan.spec, rec: PaymentRecord): Promise<RealSettlementAttempt> => {
                 try {
-                  // Deterministic txn construction from the approved spec.
-                  const tx = buildTransferTransaction(
-                    { ...rec, amount: spec.amount, recipient: { ...rec.recipient, value: spec.recipient } },
-                    spec.sender,
-                  );
+                  // Deterministic txn construction from the approved spec. When
+                  // a MOVA package id resolves, ONE PTB transfers the SUI AND
+                  // mints the on-chain OwnedPaymentRecord (atomic payment +
+                  // ownership record); otherwise the plain transfer PTB is used.
+                  const tx = MOVA_PACKAGE_ID
+                    ? buildMovaOwnedTransaction(
+                        { ...rec, amount: spec.amount, recipient: { ...rec.recipient, value: spec.recipient } },
+                        spec.sender,
+                      )
+                    : buildTransferTransaction(
+                        { ...rec, amount: spec.amount, recipient: { ...rec.recipient, value: spec.recipient } },
+                        spec.sender,
+                      );
                   const res = await executeTransaction(tx);
                   if (res.ok && res.digest) return { digest: res.digest, error: null };
                   return { digest: null, error: res.error ?? "wallet could not execute the transaction" };
