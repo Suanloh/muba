@@ -29,6 +29,7 @@ import {
   qrParserContext,
   QR_TOKEN_OPTIONS,
 } from "@/lib/pipeline/qr-payment";
+import { scrollToPlanReview } from "@/lib/pipeline/scroll-to-review";
 import { shortAddress } from "@/lib/pipeline/format";
 import { Badge, Button, Card } from "./ui";
 
@@ -58,7 +59,7 @@ function cameraErrorMessage(err: unknown): string {
 
 export function QrScanInterface() {
   const { connection } = useMovaWallet();
-  const { submitIntent } = useAppStore();
+  const { submitIntent, resetVersion } = useAppStore();
 
   const connected = connection.status === "connected";
   const ownerAddress = connection.account?.address ?? null;
@@ -222,6 +223,14 @@ export function QrScanInterface() {
     setCameraError(null);
   };
 
+  // "Reset demo" (store clearAll) bumps resetVersion — clear the decoded QR
+  // result + any camera state so a stale scan can't be re-confirmed.
+  useEffect(() => {
+    resetScan();
+    stopCamera();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional full reset
+  }, [resetVersion]);
+
   const handleConfirm = async () => {
     if (!result || !canConfirmQrIntent(result)) return;
     const text = buildQrPipelineText(result, token);
@@ -234,6 +243,8 @@ export function QrScanInterface() {
     try {
       const record = await submitIntent(text);
       setSubmittedId(record.id);
+      // Reveal the plan review so the user can confirm the preview + approve.
+      scrollToPlanReview();
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -443,12 +454,16 @@ function QrResultCard({
         </ul>
       )}
 
-      {/* Field-level errors (missing / ambiguous) */}
+      {/* Field-level errors (missing / ambiguous). QR-integrity errors are
+          already shown in their own fail-closed block above — excluding them
+          here prevents the CRC mismatch from being rendered twice. */}
       {!ok && result.errors.length > 0 && (
         <ul className="mt-2 list-inside list-disc space-y-0.5 text-xs text-rose-600">
-          {result.errors.map((e) => (
-            <li key={e.code}>{e.message}</li>
-          ))}
+          {result.errors
+            .filter((e) => !result.qrErrors.includes(e.message))
+            .map((e, i) => (
+              <li key={`${e.code}-${i}`}>{e.message}</li>
+            ))}
         </ul>
       )}
 

@@ -21,12 +21,13 @@ import { MovaError, ErrorCode } from "@mova/logger";
 import type { AuditEvent, ExecutionFailureInfo, Network } from "@mova/types";
 import type {
   GateVerdict,
+  MovaNetworkState,
   PaymentReceipt,
   PaymentRecord,
   SuiAddress,
 } from "@mova/wallet";
 import { useMovaWallet } from "@/lib/wallet/mova-wallet-context";
-import { EXPECTED_NETWORK, WEB_SETTLEMENT_MODE } from "@/lib/wallet/networks";
+import { EXPECTED_NETWORK, MOVA_PACKAGE_ID, WEB_SETTLEMENT_MODE } from "@/lib/wallet/networks";
 import { playUiSound, setSoundMuted } from "@/components/notifications/Sound";
 
 /** Active top-level view rendered inside the app shell (sidebar / bottom bar). */
@@ -39,8 +40,9 @@ export interface PlanRunState {
   status: PlanRunStatus;
   entries: LiveRunEntry[];
 }
-import { buildTransferTransaction } from "@/lib/pipeline/real-settlement";
+import { buildMovaOwnedTransaction, buildTransferTransaction } from "@/lib/pipeline/real-settlement";
 import { hasSufficientBalance, querySuiBalance } from "@/lib/pipeline/balance";
+import { buildMemWalInput, memWalStore, type MemWalStoreResult } from "@/lib/pipeline/memwal";
 import { type PaymentPlan, type RiskView } from "@/lib/pipeline/execution-engine";
 import { runPlanReview, type LiveRunEntry } from "@/lib/pipeline/plan-review";
 import {
@@ -64,6 +66,18 @@ export interface AppNotification {
   recordId?: string;
 }
 
+/**
+ * Human-readable, actionable network-mismatch message: tells the user WHICH
+ * network the wallet is on vs what MOVA expects (the generic message alone
+ * left the user guessing what to fix).
+ */
+function networkMismatchMessage(network: MovaNetworkState): string {
+  if (network.unknown) {
+    return `MOVA could not detect the wallet's network — expected ${network.expected}. Switch the wallet or app to ${network.expected} before approving or executing.`;
+  }
+  return `Wallet is on ${network.detectedNetwork}, but MOVA expects ${network.expected}. Switch the wallet or app to ${network.expected} before approving or executing.`;
+}
+
 interface AppStoreValue {
   records: PaymentRecord[];
   receipts: PaymentReceipt[];
@@ -78,6 +92,8 @@ interface AppStoreValue {
   plans: Record<string, PaymentPlan>;
   /** recordId -> the user acknowledged the preview ("I understand"). */
   acknowledged: Record<string, boolean>;
+  /** recordId -> MemWal (Walrus memory) store result for a settled payment. */
+  memWal: Record<string, MemWalStoreResult>;
   setActiveRecordId: (id: string | null) => void;
   setAcknowledged: (recordId: string, value: boolean) => void;
   submitIntent: (rawText: string) => Promise<PaymentRecord>;
@@ -86,6 +102,8 @@ interface AppStoreValue {
   execute: (recordId: string) => Promise<PaymentRecord>;
   attemptAiAutoExecute: (recordId: string) => GateVerdict;
   dismissNotification: (id: string) => void;
+  /** Dismiss a single persistent feed item (notification bell ✕). */
+  dismissFeedNotification: (id: string) => void;
   clearAll: () => void;
   /** UI prefs — sound on/off, balance privacy, active nav view. */
   soundEnabled: boolean;
@@ -97,6 +115,12 @@ interface AppStoreValue {
   /** Live plan-review run (streamed progress of the unified pipeline). */
   planRun: PlanRunState;
   resetPlanRun: () => void;
+  /**
+   * Monotonic counter bumped by `clearAll` — UI components with their own
+   * local state (chat conversation, QR scan) subscribe to reset themselves on
+   * "Reset demo" so stale working intents can't leak into the next payment.
+   */
+  resetVersion: number;
 }
 
 const AppStoreContext = createContext<AppStoreValue | null>(null);
@@ -112,11 +136,13 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const [riskViews, setRiskViews] = useState<Record<string, RiskView>>({});
   const [plans, setPlans] = useState<Record<string, PaymentPlan>>({});
   const [acknowledged, setAcknowledgedState] = useState<Record<string, boolean>>({});
+  const [memWal, setMemWal] = useState<Record<string, MemWalStoreResult>>({});
   // UI prefs. Persisted; read after mount to avoid SSR hydration mismatch.
   const [soundEnabled, setSoundEnabledState] = useState(true);
   const [privacyHidden, setPrivacyHiddenState] = useState(false);
   const [view, setViewState] = useState<AppView>("home");
   const [planRun, setPlanRunState] = useState<PlanRunState>({ recordId: null, status: "idle", entries: [] });
+  const [resetVersion, setResetVersion] = useState(0);
 
   useEffect(() => {
     try {
@@ -192,6 +218,10 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
 
   const dismissNotification = useCallback((id: string) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
+  }, []);
+
+  const dismissFeedNotification = useCallback((id: string) => {
+    setNotificationFeed((prev) => prev.filter((n) => n.id !== id));
   }, []);
 
   const updateRecord = useCallback((record: PaymentRecord) => {
@@ -356,6 +386,14 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
         notify("error", "Preview required", err.message);
         throw err;
       }
+      // Approve-time network guard: an authz issued on the wrong network can
+      // never execute — refuse BEFORE the human commits to an approval. The
+      // plan digest + authz stay bound to the expected network only.
+      if (!network.matches) {
+        const err = new MovaError(ErrorCode.WALLET_NETWORK_MISMATCH, networkMismatchMessage(network));
+        notify("error", "Network mismatch", err.message);
+        throw err;
+      }
       // The human approves EXACTLY the spec digest shown in the preview.
       const res = approveFlow(record, ownerAddress, {
         specDigest: plan.spec.planDigest,
@@ -366,7 +404,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       notify("success", "Approved", `Payment ${record.id.slice(0, 12)}… approved. Authz bound to plan ${plan.spec.planDigest.slice(0, 12)}….`, record.id);
       return res.record;
     },
-    [records, plans, ownerAddress, updateRecord, appendAudit, notify],
+    [records, plans, ownerAddress, network, updateRecord, appendAudit, notify],
   );
 
   const reject = useCallback(
@@ -413,9 +451,22 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       const networkMatches = network.matches;
       if (!networkMatches) {
         executingRef.current.delete(recordId);
-        const err = new MovaError(ErrorCode.WALLET_NETWORK_MISMATCH, "Wallet network does not match the MOVA expected network.");
-        notify("error", "Network mismatch", err.message);
-        throw err;
+        // Fail the flow with a STRUCTURED failure (not a bare throw) so the
+        // audit trail + Activity view honestly record the network mismatch
+        // instead of leaving the record stuck in APPROVED forever.
+        const failure: ExecutionFailureInfo = {
+          code: "NETWORK_FAILURE",
+          stage: "WALLET_AUTHZ",
+          message: networkMismatchMessage(network),
+          userActionable: true,
+          retryable: true,
+          at: Date.now(),
+        };
+        const failed = failFlow(record, failure);
+        updateRecord(failed.record);
+        appendAudit(failed.events);
+        notify("error", "Network mismatch", failureUserMessage(failure), record.id);
+        return failed.record;
       }
 
       try {
@@ -426,11 +477,19 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
           WEB_SETTLEMENT_MODE === "real"
             ? async (spec: typeof plan.spec, rec: PaymentRecord): Promise<RealSettlementAttempt> => {
                 try {
-                  // Deterministic txn construction from the approved spec.
-                  const tx = buildTransferTransaction(
-                    { ...rec, amount: spec.amount, recipient: { ...rec.recipient, value: spec.recipient } },
-                    spec.sender,
-                  );
+                  // Deterministic txn construction from the approved spec. When
+                  // a MOVA package id resolves, ONE PTB transfers the SUI AND
+                  // mints the on-chain OwnedPaymentRecord (atomic payment +
+                  // ownership record); otherwise the plain transfer PTB is used.
+                  const tx = MOVA_PACKAGE_ID
+                    ? buildMovaOwnedTransaction(
+                        { ...rec, amount: spec.amount, recipient: { ...rec.recipient, value: spec.recipient } },
+                        spec.sender,
+                      )
+                    : buildTransferTransaction(
+                        { ...rec, amount: spec.amount, recipient: { ...rec.recipient, value: spec.recipient } },
+                        spec.sender,
+                      );
                   const res = await executeTransaction(tx);
                   if (res.ok && res.digest) return { digest: res.digest, error: null };
                   return { digest: null, error: res.error ?? "wallet could not execute the transaction" };
@@ -465,6 +524,58 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
         updateRecord(res.record);
         appendAudit(res.events);
         if (res.receipt) addReceipt(res.receipt);
+
+        // MemWal — snapshot this payment's memory (trail + settlement facts)
+        // to Walrus (static/demo by default, real testnet when enabled).
+        // Best-effort: never blocks settlement, always honest about fallback.
+        if (res.record.state === "SETTLED" || res.record.settlement) {
+          try {
+            const trail = auditRef.current.filter(
+              (e) => e.correlationId === record.correlationId,
+            );
+            const memWalResult = await memWalStore.persist(
+              buildMemWalInput({ record: res.record, plan, trail }),
+            );
+            setMemWal((prev) => ({ ...prev, [record.id]: memWalResult }));
+            appendAudit([
+              {
+                id: crypto.randomUUID(),
+                correlationId: record.correlationId,
+                entityType: "PAYMENT_INTENT",
+                entityId: record.id,
+                eventType: "MEMORY_STORED",
+                actor: { type: "SYSTEM", id: "memwal" },
+                payload: {
+                  blobId: memWalResult.blobId,
+                  url: memWalResult.url,
+                  simulated: memWalResult.simulated,
+                  error: memWalResult.error,
+                },
+                previousState: "EXECUTING",
+                newState: null,
+                simulated: memWalResult.simulated,
+                timestamp: Date.now(),
+              },
+            ]);
+          } catch (memErr) {
+            // MemWal is additive — a failure never fails the payment.
+            appendAudit([
+              {
+                id: crypto.randomUUID(),
+                correlationId: record.correlationId,
+                entityType: "PAYMENT_INTENT",
+                entityId: record.id,
+                eventType: "MEMORY_STORE_FAILED",
+                actor: { type: "SYSTEM", id: "memwal" },
+                payload: { error: memErr instanceof Error ? memErr.message : String(memErr) },
+                previousState: "EXECUTING",
+                newState: null,
+                simulated: true,
+                timestamp: Date.now(),
+              },
+            ]);
+          }
+        }
 
         // Structured failure surfaced to the user (never swallowed).
         if (res.failure) {
@@ -512,8 +623,11 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     setRiskViews({});
     setPlans({});
     setAcknowledgedState({});
+    setMemWal({});
     setActiveRecordId(null);
     setPlanRunState({ recordId: null, status: "idle", entries: [] });
+    // Bump so local-state components (chat / QR) reset their working intents.
+    setResetVersion((v) => v + 1);
   }, []);
 
   const value = useMemo<AppStoreValue>(
@@ -527,6 +641,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       riskViews,
       plans,
       acknowledged,
+      memWal,
       setActiveRecordId,
       setAcknowledged,
       submitIntent,
@@ -535,6 +650,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       execute,
       attemptAiAutoExecute,
       dismissNotification,
+      dismissFeedNotification,
       clearAll,
       soundEnabled,
       setSoundEnabled,
@@ -544,6 +660,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       setView,
       planRun,
       resetPlanRun,
+      resetVersion,
     }),
     [
       records,
@@ -555,6 +672,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       riskViews,
       plans,
       acknowledged,
+      memWal,
       setActiveRecordId,
       setAcknowledged,
       submitIntent,
@@ -563,6 +681,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       execute,
       attemptAiAutoExecute,
       dismissNotification,
+      dismissFeedNotification,
       clearAll,
       soundEnabled,
       setSoundEnabled,
@@ -572,6 +691,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       setView,
       planRun,
       resetPlanRun,
+      resetVersion,
     ],
   );
 

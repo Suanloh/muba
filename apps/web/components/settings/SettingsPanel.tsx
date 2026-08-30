@@ -1,10 +1,17 @@
 "use client";
 /**
- * Settings — sound effects toggle, balance-privacy toggle, demo reset, and an
- * ecosystem note. Reached from the sidebar / bottom-bar "Settings" destination.
+ * Settings — sound effects toggle, balance-privacy toggle, demo reset, an
+ * ecosystem note, plus the network / wallet-identity / Sui ownership cards
+ * (moved here from the Home sidebar). Reached from the sidebar / bottom-bar
+ * "Settings" destination.
  */
 import { useAppStore } from "@/lib/store/app-store";
 import { Button, Card } from "@/components/ui";
+import { NetworkBanner } from "@/components/NetworkBanner";
+import { WalletStatusCard } from "@/components/WalletStatusCard";
+import { OwnershipPanel } from "@/components/OwnershipPanel";
+import { ZkLoginPanel } from "@/components/settings/ZkLoginPanel";
+import { MemWalPanel } from "@/components/settings/MemWalPanel";
 
 function ToggleRow({
   label,
@@ -48,40 +55,49 @@ export function SettingsPanel() {
     useAppStore();
 
   return (
-    <Card title="Settings" subtitle="Sound, privacy & demo controls.">
-      <div className="divide-y divide-hairline">
-        <ToggleRow
-          label="Sound effects"
-          desc="Play a short sound for payment success / failure and approval-required events."
-          checked={soundEnabled}
-          onChange={setSoundEnabled}
-        />
-        <ToggleRow
-          label="Hide balances"
-          desc="Mask all amounts and fiat values across Portfolio and Activity."
-          checked={privacyHidden}
-          onChange={setPrivacyHidden}
-        />
-      </div>
+    <div className="space-y-6">
+      <Card title="Settings" subtitle="Sound, privacy & demo controls.">
+        <div className="divide-y divide-hairline">
+          <ToggleRow
+            label="Sound effects"
+            desc="Play a short sound for payment success / failure and approval-required events."
+            checked={soundEnabled}
+            onChange={setSoundEnabled}
+          />
+          <ToggleRow
+            label="Hide balances"
+            desc="Mask all amounts and fiat values across Portfolio and Activity."
+            checked={privacyHidden}
+            onChange={setPrivacyHidden}
+          />
+        </div>
 
-      <div className="mt-4 border-t border-hairline pt-4">
-        <p className="text-sm font-medium text-ink">Demo</p>
-        <p className="mt-0.5 text-xs text-muted">
-          Clear all demo records, receipts, notifications and audit events so you can run the demo
-          again from a clean slate.
-        </p>
-        <Button variant="secondary" className="mt-2" disabled={records.length === 0} onClick={clearAll}>
-          Reset demo
-        </Button>
-      </div>
+        <div className="mt-4 border-t border-hairline pt-4">
+          <p className="text-sm font-medium text-ink">Demo</p>
+          <p className="mt-0.5 text-xs text-muted">
+            Clear all demo records, receipts, notifications and audit events so you can run the demo
+            again from a clean slate.
+          </p>
+          <Button variant="secondary" className="mt-2" disabled={records.length === 0} onClick={clearAll}>
+            Reset demo
+          </Button>
+        </div>
 
-      <div className="mt-4 border-t border-hairline pt-4">
-        <p className="text-sm font-medium text-ink">Ecosystems</p>
-        <p className="mt-0.5 text-xs text-muted">
-          MOVA settles on Sui. EVM wallets (MetaMask, Rabby…) connect read-only — balances and
-          signature proof only; no EVM settlement yet.
-        </p>
-      </div>
-    </Card>
+        <div className="mt-4 border-t border-hairline pt-4">
+          <p className="text-sm font-medium text-ink">Ecosystems</p>
+          <p className="mt-0.5 text-xs text-muted">
+            MOVA settles on Sui. EVM wallets (MetaMask, Rabby…) connect read-only — balances and
+            signature proof only; no EVM settlement yet.
+          </p>
+        </div>
+      </Card>
+
+      {/* Network, wallet identity, Sui ownership, zkLogin & MemWal — moved here from the Home sidebar. */}
+      <NetworkBanner />
+      <WalletStatusCard />
+      <OwnershipPanel />
+      <ZkLoginPanel />
+      <MemWalPanel />
+    </div>
   );
 }

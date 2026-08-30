@@ -15,6 +15,11 @@ import {
   ENABLE_DEMO_WALLET,
 } from "./networks.js";
 import { demoWalletInitializer } from "./demo-wallet.js";
+import { zkLoginWalletInitializer } from "./zklogin-wallet.js";
+
+/** zkLogin wallet visibility (default on; off via env for minimal builds). */
+export const ENABLE_ZKLOGIN_WALLET =
+  (process.env.NEXT_PUBLIC_ENABLE_ZKLOGIN_WALLET ?? "true") === "true";
 
 export const dAppKit = createDAppKit({
   networks: [...DAPP_NETWORKS],
@@ -23,10 +28,14 @@ export const dAppKit = createDAppKit({
   createClient(network) {
     return new SuiGrpcClient({ network, baseUrl: dappNetworkRpcUrl(network) });
   },
-  // MOVA shows installed wallets + its own dev Demo Wallet; the built-in
-  // Slush web wallet is disabled (also avoids SSR `document` access).
+  // MOVA shows installed wallets + its own dev Demo Wallet + the zkLogin
+  // (Google) wallet; the built-in Slush web wallet is disabled (also avoids
+  // SSR `document` access).
   slushWalletConfig: null,
-  walletInitializers: ENABLE_DEMO_WALLET ? [demoWalletInitializer] : [],
+  walletInitializers: [
+    ...(ENABLE_DEMO_WALLET ? [demoWalletInitializer] : []),
+    ...(ENABLE_ZKLOGIN_WALLET ? [zkLoginWalletInitializer] : []),
+  ],
 });
 
 // Register the instance type globally so hooks are fully typed.

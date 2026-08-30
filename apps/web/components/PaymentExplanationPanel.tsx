@@ -62,7 +62,14 @@ export function PaymentExplanationPanel() {
 
         {/* 2 — Why this route */}
         <Section n={2} question="Why did MOVA select this route?">
-          <p className="text-xs text-slate-600">{ex.route.selectionReason}</p>
+          <p className="text-xs text-slate-600">
+            {ex.route.routeNo > 0
+              ? `Route #${ex.route.routeNo} (${ex.route.legOrder.join(" → ")}) — ranked best of ${ex.route.candidateCount} candidates across cost, speed, risk and reliability.`
+              : "No route selected yet."}
+            {ex.route.savings && (
+              <span className="text-slate-500"> Saves {formatMoney(ex.route.savings.estimatedSavings)} vs the most expensive route.</span>
+            )}
+          </p>
           <dl className="mt-1 grid gap-x-6 gap-y-0.5 text-xs text-slate-600 sm:grid-cols-2">
             <KV k="Route" v={ex.route.routeNo > 0 ? `#${ex.route.routeNo} ${ex.route.legOrder.join("→")}` : "—"} />
             <KV k="Candidates considered" v={String(ex.route.candidateCount)} />
@@ -71,9 +78,6 @@ export function PaymentExplanationPanel() {
             <KV k="Est. time" v={formatDuration(ex.route.estimatedTimeMs)} />
             <KV k="Reliability" v={ex.route.reliability > 0 ? `${Math.round(ex.route.reliability * 100)}%` : "—"} />
           </dl>
-          {ex.route.savings && (
-            <p className="mt-1 text-[11px] text-slate-500">{ex.route.savings.explanation}</p>
-          )}
         </Section>
 
         {/* 3 — Compliance checks passed */}
@@ -102,7 +106,7 @@ export function PaymentExplanationPanel() {
             <ul className="mt-1 space-y-0.5 text-xs text-slate-600">
               {ex.risk.topSignals.map((s, i) => (
                 <li key={i}>
-                  <span className="text-slate-500">{s.description}:</span> {s.value} (threshold {s.threshold})
+                  <span className="text-slate-500">{s.description}:</span> {s.value}
                 </li>
               ))}
             </ul>

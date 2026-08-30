@@ -79,10 +79,11 @@ export function TransactionStatusCard() {
             <span className="text-slate-500">Est. time</span>{" "}
             <span className="text-slate-800">{formatDuration(route.estimatedTimeMs)}</span>
           </div>
-          {route.selectionReason && (
+          {route && (
             <p className="sm:col-span-2 text-slate-600">
               <span className="text-slate-500">Why: </span>
-              {route.selectionReason}
+              Route #{route.routeNo} ({route.summary.legOrder.join(" → ")}) — selected as the best
+              balance of cost, speed, risk and reliability. Full scoring is in the audit report.
             </p>
           )}
         </div>

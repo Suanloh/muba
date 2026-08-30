@@ -19,6 +19,8 @@ import { SuiGrpcClient } from "@mysten/sui/grpc";
 import { Transaction } from "@mysten/sui/transactions";
 import type { Keypair } from "@mysten/sui/cryptography";
 import { MovaError, ErrorCode } from "@mova/logger";
+import { buildMovaOwnedPaymentPtb } from "./sui-ptb.js";
+import type { MovaOwnedTransferPayload } from "./sui-ptb.js";
 import type {
   Network,
   ProviderDescriptor,
@@ -32,7 +34,7 @@ import type {
 
 /** Explicit, validated execution params for a Sui settlement. */
 export interface SuiTransferPayload {
-  kind: "NATIVE_TRANSFER" | "TOKEN_TRANSFER";
+  kind: "NATIVE_TRANSFER" | "TOKEN_TRANSFER" | "MOVA_OWNED_TRANSFER";
   /** Source / sender address (the signing account). */
   from: string;
   /** Recipient Sui address. */
@@ -96,6 +98,12 @@ export class SuiSettlementProvider implements SettlementProvider {
       const [coin] = tx.splitCoins(tx.gas, [amount]);
       tx.transferObjects([coin], tx.pure.address(payload.to));
       return tx;
+    }
+
+    // MOVA_OWNED_TRANSFER — ONE PTB: pay + mint the on-chain OwnedPaymentRecord
+    // from the published `mova_owned` module, atomically (Phase 2 ownership).
+    if (payload.kind === "MOVA_OWNED_TRANSFER") {
+      return buildMovaOwnedPaymentPtb(payload as MovaOwnedTransferPayload);
     }
 
     // TOKEN_TRANSFER: split an existing coin of `asset` type and transfer it.
