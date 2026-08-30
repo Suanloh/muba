@@ -12,8 +12,19 @@ import {
   networkDefinition,
 } from "@mova/wallet";
 
-export const MOVA_ENV: RuntimeEnv =
-  (process.env.NEXT_PUBLIC_MOVA_ENV as RuntimeEnv | undefined) ?? "testnet";
+const VALID_MOVA_ENVS: readonly string[] = ["dev", "testnet", "mainnet"];
+
+/**
+ * Resolve the MOVA runtime boundary from NEXT_PUBLIC_MOVA_ENV.
+ * Any unset, blank, or unknown value safely falls back to "testnet" so a
+ * misconfigured/empty env var can never break the production build or the
+ * `/_not-found` prerender (which evaluates this module at load time).
+ */
+function resolveMovaEnv(raw: string | undefined): RuntimeEnv {
+  return VALID_MOVA_ENVS.includes(raw ?? "") ? (raw as RuntimeEnv) : "testnet";
+}
+
+export const MOVA_ENV: RuntimeEnv = resolveMovaEnv(process.env.NEXT_PUBLIC_MOVA_ENV);
 
 /** Expected MOVA network (SUI_DEVNET | SUI_TESTNET | SUI_MAINNET). */
 export const EXPECTED_NETWORK: Network = expectedNetworkForEnv(MOVA_ENV);
