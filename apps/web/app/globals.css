@@ -75,7 +75,8 @@
   --border-strong: rgba(21, 17, 14, 0.18);
   --text: #1c1712;
   --text-muted: #6b6459;
-  --text-faint: #9a9285;
+  /* Darkened for WCAG AA (>=4.5:1 on vellum) — faint is decorative/disabled only */
+  --text-faint: #7c7468;
 
   --signal-text: #4b4fd1;
   --signal-bg: rgba(75, 79, 209, 0.1);
@@ -146,4 +147,57 @@ body {
 }
 *::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* ============ MOTION & UTILITIES ============ */
+
+/* Pending/attention pulse (bottom bar + status indicators). Paused under
+   reduced-motion via the media query below. */
+@keyframes mova-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.8);
+  }
+}
+.mova-pulse {
+  animation: mova-pulse 1.8s ease-in-out infinite;
+}
+
+/* iOS safe-area padding for the fixed bottom bar. */
+.pb-safe {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+.pb-safe-lg {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+/* Toast auto-dismiss progress sweep (width 100% -> 0). */
+@keyframes mova-shrink {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
+/* Respect reduced-motion: kill pulses, sweeps, and sheet transitions. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .mova-pulse {
+    animation: none;
+    opacity: 1;
+  }
 }

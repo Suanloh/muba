@@ -1,9 +1,9 @@
 "use client";
-import { WalletConnectButton } from "./WalletConnectButton";
 import { NetworkBanner } from "./NetworkBanner";
 import { WalletStatusCard } from "./WalletStatusCard";
-import { ChatPaymentInterface } from "./ChatPaymentInterface";
-import { QrScanInterface } from "./QrScanInterface";
+import { OwnershipPanel } from "./OwnershipPanel";
+import { PaymentInputTabs } from "./PaymentInputTabs";
+import { LiveRunPanel } from "./LiveRunPanel";
 import { TransactionStatusCard } from "./TransactionStatusCard";
 import { PaymentPreviewPanel } from "./PaymentPreviewPanel";
 import { PaymentExplanationPanel } from "./PaymentExplanationPanel";
@@ -12,28 +12,15 @@ import { ApprovalPanel } from "./ApprovalPanel";
 import { SafetyBoundaryCard } from "./SafetyBoundaryCard";
 import { AuditTrailPanel } from "./AuditTrailPanel";
 import { NotificationsPanel } from "./NotificationsPanel";
-import { TransactionHistory } from "./TransactionHistory";
-import { OwnershipPanel } from "./OwnershipPanel";
 import { NotificationArea } from "./NotificationArea";
-import { ThemeToggle } from "./ThemeToggle";
+import { HeaderBar } from "@/components/chrome/HeaderBar";
+import { Sidebar } from "@/components/chrome/Sidebar";
+import { BottomBar } from "@/components/chrome/BottomBar";
+import { ActivityPanel } from "@/components/activity/ActivityPanel";
+import { BalanceCard } from "@/components/portfolio/BalanceCard";
+import { PortfolioPanel } from "@/components/portfolio/PortfolioPanel";
+import { SettingsPanel } from "@/components/settings/SettingsPanel";
 import { useAppStore } from "@/lib/store/app-store";
-
-/** MOVA brand mark — the ledger check, matching the prototype. */
-function BrandMark({ className = "h-7 w-7" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 28 28" className={className} aria-hidden="true">
-      <rect x="1" y="1" width="26" height="26" rx="8" fill="var(--ledger)" />
-      <path
-        d="M8.5 14.8 12 18.3 19.5 9.8"
-        fill="none"
-        stroke="var(--bark)"
-        strokeWidth="2.1"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
 
 /**
  * A numbered demo stage — makes the payment hierarchy explicit so a judge can
@@ -54,82 +41,74 @@ function Stage({ n, title, hint, children }: { n: number; title: string; hint: s
   );
 }
 
+function HomeView() {
+  return (
+    <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+      <div className="space-y-8">
+        <section className="pt-4">
+          <p className="font-mono text-[11px] uppercase tracking-[0.06em] text-faint">
+            Say what you want to pay
+          </p>
+          <h1 className="mt-2 font-display text-[clamp(28px,4vw,38px)] font-semibold leading-[1.08] tracking-[-0.01em] text-ink">
+            MOVA finds the route, checks the rules, and settles it on Sui.
+          </h1>
+          <p className="mt-2 max-w-[52ch] text-[15px] text-muted">
+            Nothing moves until you approve it. Follow the story from intent to settlement.
+          </p>
+        </section>
+
+        <Stage n={1} title="Say what to pay" hint="describe it, or scan a merchant QR">
+          <PaymentInputTabs />
+        </Stage>
+
+        <Stage n={2} title="Review the plan" hint="strategy → compliance → risk & route — every decision explained">
+          <LiveRunPanel />
+          <TransactionStatusCard />
+          <PaymentPreviewPanel />
+          <PaymentExplanationPanel />
+          <RiskAssessmentPanel />
+        </Stage>
+
+        <Stage n={3} title="Approve & settle" hint="only a human can authorize the wallet">
+          <ApprovalPanel />
+        </Stage>
+
+        <Stage n={4} title="Verify the trail" hint="safety demo, notifications, audit & history">
+          <SafetyBoundaryCard />
+          <AuditTrailPanel />
+          <NotificationsPanel />
+        </Stage>
+      </div>
+      <aside className="space-y-6">
+        {/* Portfolio embedded directly in Home (requirement 1). */}
+        <PortfolioPanel />
+        <NetworkBanner />
+        <WalletStatusCard />
+        <OwnershipPanel />
+      </aside>
+    </div>
+  );
+}
+
 export function Dashboard() {
-  const { records, clearAll } = useAppStore();
-  const hasRecords = records.length > 0;
+  const { view } = useAppStore();
 
   return (
     <div className="min-h-screen bg-page text-ink">
       <NotificationArea />
-      <header className="sticky top-0 z-40 border-b border-hairline bg-translucent backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-2.5">
-            <BrandMark />
-            <div className="flex items-baseline gap-2">
-              <p className="font-display text-[19px] font-semibold tracking-[-0.01em] text-ink">MOVA</p>
-              <p className="font-mono text-[11px] text-faint">AI-native payments on Sui</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {hasRecords && (
-              <button
-                type="button"
-                onClick={() => clearAll()}
-                className="rounded-[12px] border border-hairline px-3 py-1.5 font-mono text-xs text-muted transition hover:border-hairline-strong hover:text-ink"
-                title="Clear all demo records, receipts, notifications and audit events so you can run the demo again from a clean slate."
-              >
-                Reset demo
-              </button>
-            )}
-            <ThemeToggle />
-            <WalletConnectButton />
-          </div>
-        </div>
-      </header>
+      <HeaderBar />
 
-      <main className="mx-auto grid max-w-6xl gap-6 px-4 py-6 lg:grid-cols-[1fr_360px]">
-        <div className="space-y-8">
-          <section className="pt-4">
-            <p className="font-mono text-[11px] uppercase tracking-[0.06em] text-faint">
-              Say what you want to pay
-            </p>
-            <h1 className="mt-2 font-display text-[clamp(28px,4vw,38px)] font-semibold leading-[1.08] tracking-[-0.01em] text-ink">
-              MOVA finds the route, checks the rules, and settles it on Sui.
-            </h1>
-            <p className="mt-2 max-w-[52ch] text-[15px] text-muted">
-              Nothing moves until you approve it. Follow the story from intent to settlement.
-            </p>
-          </section>
+      <div className="mx-auto flex max-w-7xl">
+        <Sidebar />
+        <main className="min-w-0 flex-1 px-4 py-6 lg:py-8">
+          {view === "home" && <HomeView />}
+          {view === "activity" && <ActivityPanel />}
+          {view === "portfolio" && <BalanceCard />}
+          {view === "settings" && <SettingsPanel />}
+        </main>
+      </div>
 
-          <Stage n={1} title="Say what to pay" hint="describe it, or scan a merchant QR">
-            <ChatPaymentInterface />
-            <QrScanInterface />
-          </Stage>
-
-          <Stage n={2} title="Review the plan" hint="route, cost, compliance, risk & hedge — every decision explained">
-            <TransactionStatusCard />
-            <PaymentPreviewPanel />
-            <PaymentExplanationPanel />
-            <RiskAssessmentPanel />
-          </Stage>
-
-          <Stage n={3} title="Approve & settle" hint="only a human can authorize the wallet">
-            <ApprovalPanel />
-          </Stage>
-
-          <Stage n={4} title="Verify the trail" hint="safety demo, notifications, audit & history">
-            <SafetyBoundaryCard />
-            <AuditTrailPanel />
-            <NotificationsPanel />
-            <TransactionHistory />
-          </Stage>
-        </div>
-        <aside className="space-y-6">
-          <NetworkBanner />
-          <WalletStatusCard />
-          <OwnershipPanel />
-        </aside>
-      </main>
+      <BottomBar />
 
       <footer className="border-t border-hairline py-8 text-center">
         <p className="font-mono text-[11px] text-faint">

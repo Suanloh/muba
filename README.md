@@ -1,5 +1,6 @@
 # MOVA — AI-native Autonomous Payment Agent
 
+
 > **MOVA lets users describe what they want to pay in plain language. MOVA finds
 > the best route, checks compliance, manages financial exposure, and settles the
 > payment on Sui — while keeping a human in control.**
