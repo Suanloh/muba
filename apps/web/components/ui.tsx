@@ -69,12 +69,16 @@ export function Button({
   onClick,
   children,
   className = "",
+  type = "button",
+  title,
 }: {
   variant?: "primary" | "secondary" | "ghost" | "danger" | "success";
   disabled?: boolean;
   onClick?: () => void;
   children: React.ReactNode;
   className?: string;
+  type?: "button" | "submit" | "reset";
+  title?: string;
 }) {
   const variants: Record<string, string> = {
     // signal — the active / in-progress CTA
@@ -92,6 +96,8 @@ export function Button({
   };
   return (
     <button
+      type={type}
+      title={title}
       onClick={onClick}
       disabled={disabled}
       className={`inline-flex items-center justify-center rounded-[12px] px-3.5 py-2 text-sm font-medium transition disabled:cursor-not-allowed ${variants[variant]} ${className}`}

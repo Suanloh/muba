@@ -11,6 +11,7 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -26,9 +27,22 @@ import type {
 } from "@mova/wallet";
 import { useMovaWallet } from "@/lib/wallet/mova-wallet-context";
 import { EXPECTED_NETWORK, WEB_SETTLEMENT_MODE } from "@/lib/wallet/networks";
+import { playUiSound, setSoundMuted } from "@/components/notifications/Sound";
+
+/** Active top-level view rendered inside the app shell (sidebar / bottom bar). */
+export type AppView = "home" | "activity" | "portfolio" | "settings";
+
+/** Live plan-review run state — streamed from the unified pipeline (req 3). */
+export type PlanRunStatus = "idle" | "running" | "done" | "failed";
+export interface PlanRunState {
+  recordId: string | null;
+  status: PlanRunStatus;
+  entries: LiveRunEntry[];
+}
 import { buildTransferTransaction } from "@/lib/pipeline/real-settlement";
 import { hasSufficientBalance, querySuiBalance } from "@/lib/pipeline/balance";
-import { buildPaymentPlan, type PaymentPlan, type RiskView } from "@/lib/pipeline/execution-engine";
+import { type PaymentPlan, type RiskView } from "@/lib/pipeline/execution-engine";
+import { runPlanReview, type LiveRunEntry } from "@/lib/pipeline/plan-review";
 import {
   approveFlow,
   createFlow,
@@ -73,6 +87,16 @@ interface AppStoreValue {
   attemptAiAutoExecute: (recordId: string) => GateVerdict;
   dismissNotification: (id: string) => void;
   clearAll: () => void;
+  /** UI prefs — sound on/off, balance privacy, active nav view. */
+  soundEnabled: boolean;
+  setSoundEnabled: (v: boolean) => void;
+  privacyHidden: boolean;
+  setPrivacyHidden: (v: boolean) => void;
+  view: AppView;
+  setView: (v: AppView) => void;
+  /** Live plan-review run (streamed progress of the unified pipeline). */
+  planRun: PlanRunState;
+  resetPlanRun: () => void;
 }
 
 const AppStoreContext = createContext<AppStoreValue | null>(null);
@@ -88,6 +112,52 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const [riskViews, setRiskViews] = useState<Record<string, RiskView>>({});
   const [plans, setPlans] = useState<Record<string, PaymentPlan>>({});
   const [acknowledged, setAcknowledgedState] = useState<Record<string, boolean>>({});
+  // UI prefs. Persisted; read after mount to avoid SSR hydration mismatch.
+  const [soundEnabled, setSoundEnabledState] = useState(true);
+  const [privacyHidden, setPrivacyHiddenState] = useState(false);
+  const [view, setViewState] = useState<AppView>("home");
+  const [planRun, setPlanRunState] = useState<PlanRunState>({ recordId: null, status: "idle", entries: [] });
+
+  useEffect(() => {
+    try {
+      const sound = localStorage.getItem("mova-sound");
+      const privacy = localStorage.getItem("mova-privacy");
+      setSoundEnabledState(sound !== "off");
+      setSoundMuted(sound === "off");
+      setPrivacyHiddenState(privacy === "hidden");
+    } catch {
+      /* private mode — defaults apply */
+    }
+  }, []);
+
+  const setSoundEnabled = useCallback((v: boolean) => {
+    setSoundEnabledState(v);
+    setSoundMuted(!v);
+    try {
+      localStorage.setItem("mova-sound", v ? "on" : "off");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const setPrivacyHidden = useCallback((v: boolean) => {
+    setPrivacyHiddenState(v);
+    try {
+      localStorage.setItem("mova-privacy", v ? "hidden" : "visible");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const setView = useCallback((v: AppView) => {
+    setViewState(v);
+    if (typeof window !== "undefined") window.scrollTo({ top: 0 });
+  }, []);
+
+  const resetPlanRun = useCallback(() => {
+    setPlanRunState({ recordId: null, status: "idle", entries: [] });
+  }, []);
+
   const auditRef = useRef<AuditEvent[]>([]);
   /** RecordIds currently executing — prevents concurrent double-execution. */
   const executingRef = useRef<Set<string>>(new Set());
@@ -114,6 +184,8 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       setNotifications((prev) => [...prev.slice(-8), n]);
       // Persistent feed — the per-payment notif history (never auto-cleared).
       setNotificationFeed((prev) => [n, ...prev].slice(0, 200));
+      // Decorative sound — a visual toast always accompanies it.
+      playUiSound(kind);
     },
     [],
   );
@@ -152,16 +224,43 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
         return record;
       }
 
-      // Phase 7 — run the deterministic pipe and build the signed spec + preview.
+      // Phase 7 — run the unified plan review and build the signed spec +
+      // preview. `runPlanReview` streams live-run progress for every stage
+      // (strategy → compliance → risk & route → preview) while the engine runs.
+      setPlanRunState({
+        recordId: record.id,
+        status: "running",
+        entries: [
+          {
+            id: crypto.randomUUID(),
+            at: Date.now(),
+            stage: "strategy",
+            kind: "info",
+            text: `Unified plan review started — ${record.id.slice(0, 12)}…`,
+          },
+        ],
+      });
+      const appendPlanRunEntry = (e: LiveRunEntry) =>
+        setPlanRunState((prev) =>
+          prev.recordId === record.id ? { ...prev, entries: [...prev.entries, e] } : prev,
+        );
+
       let plan: PaymentPlan;
       try {
-        plan = await buildPaymentPlan(record, {
+        plan = await runPlanReview(record, {
           sender: ownerAddress,
           expectedSettlement: WEB_SETTLEMENT_MODE === "real" ? "REAL" : "SIMULATED",
+          onEntry: appendPlanRunEntry,
         });
+        setPlanRunState((prev) =>
+          prev.recordId === record.id ? { ...prev, status: "done" } : prev,
+        );
       } catch (err) {
         // Engine failure (integration unavailable / no route / compliance
         // blocked) — fail closed and record the structured failure.
+        setPlanRunState((prev) =>
+          prev.recordId === record.id ? { ...prev, status: "failed" } : prev,
+        );
         const failure = classifyEngineFailure(err, record);
         const failed = failFlow(record, failure);
         appendAudit(failed.events);
@@ -414,6 +513,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     setPlans({});
     setAcknowledgedState({});
     setActiveRecordId(null);
+    setPlanRunState({ recordId: null, status: "idle", entries: [] });
   }, []);
 
   const value = useMemo<AppStoreValue>(
@@ -436,6 +536,14 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       attemptAiAutoExecute,
       dismissNotification,
       clearAll,
+      soundEnabled,
+      setSoundEnabled,
+      privacyHidden,
+      setPrivacyHidden,
+      view,
+      setView,
+      planRun,
+      resetPlanRun,
     }),
     [
       records,
@@ -456,6 +564,14 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       attemptAiAutoExecute,
       dismissNotification,
       clearAll,
+      soundEnabled,
+      setSoundEnabled,
+      privacyHidden,
+      setPrivacyHidden,
+      view,
+      setView,
+      planRun,
+      resetPlanRun,
     ],
   );
 

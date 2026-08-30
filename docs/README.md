@@ -15,6 +15,7 @@ everything else.
 | [`conventions.md`](conventions.md) | Logging & error-handling conventions |
 | [`roadmap.md`](roadmap.md) | Phased delivery plan (Phase 1 → n) |
 | [`trust.md`](trust.md) | Phase 8 — txn status, audit trail & trust layer (observability, explanation, notifications) |
+| [`ui-ux-redesign.md`](ui-ux-redesign.md) | Interface redesign spec — header/sidebar layout, multi-ecosystem bottom bar, txn history, WalletConnect fact-check (EVM vs Sui), notifications (sound/toasts/light-mode), balance display |
 
 The documents are backed by runnable foundation code:
 
