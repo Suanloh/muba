@@ -5,3 +5,4 @@ export * from "./volatility.js";
 export * from "./thetanuts.js";
 export * from "./market-data.js";
 export * from "./screening.js";
+export * from "./walrus.js";

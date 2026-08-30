@@ -160,7 +160,10 @@ export function PaymentPreviewPanel() {
             </Row>
           </>
         )}
-        <p className="mt-1.5 whitespace-pre-wrap text-[11px] leading-relaxed text-slate-500">{preview.route.selectionReason}</p>
+        <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
+          Why: Route #{preview.route.routeNo} ({preview.route.summary.legOrder.join(" → ")}) — ranked
+          best of the candidates. Full scoring is in the audit report.
+        </p>
       </div>
 
       {/* Compliance, risk, hedge */}
@@ -171,11 +174,14 @@ export function PaymentPreviewPanel() {
           <p className="mt-1 text-rose-600">Matched: {preview.compliance.matchedLists.join(", ")}</p>
         )}
         <h3 className="mb-1 mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Financial risk</h3>
-        <p className="whitespace-pre-wrap text-slate-600">{preview.risk.explanation}</p>
+        <p className="text-slate-600">
+          {preview.risk.band} risk · {preview.risk.score}/100 → {preview.risk.decision}. Full signal
+          breakdown is in the audit report.
+        </p>
         <h3 className="mb-1 mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Hedge</h3>
         <p className="text-slate-600">
           {preview.hedge.decision === "HEDGE"
-            ? `${preview.hedge.strategy} via ${preview.hedge.dataSource} — premium ${formatMoney(preview.hedge.premium)}, removes ${formatMoney(preview.hedge.exposureReduction)} of exposure. ${preview.hedge.explanation}`
+            ? `Hedged via ${preview.hedge.strategy} (${preview.hedge.dataSource}) — premium ${formatMoney(preview.hedge.premium)}, removes ${formatMoney(preview.hedge.exposureReduction)} of exposure.`
             : `No hedge (${preview.hedge.dataSource}). ${preview.hedge.explanation}`}
         </p>
       </div>

@@ -4,3 +4,4 @@ export * from "./ownership.js";
 export * from "./gate.js";
 export * from "./provider.js";
 export * from "./verify.js";
+export * from "./zklogin.js";

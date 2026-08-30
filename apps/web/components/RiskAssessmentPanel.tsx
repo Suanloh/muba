@@ -108,7 +108,11 @@ export function RiskAssessmentPanel() {
             <span className="text-slate-500"> (route {formatMoney(hedge.withoutHedge)} + hedge {formatMoney(hedge.delta)})</span>
           )}
         </p>
-        <pre className="mt-2 whitespace-pre-wrap font-sans text-xs leading-relaxed text-slate-600">{rec.explanation}</pre>
+        <p className="mt-2 text-xs leading-relaxed text-slate-600">
+          <span className="font-medium">{risk.band} risk · {risk.score}/100</span> → {rec.decision}
+          {rec.hedged ? ` · hedged via ${hedge.strategy}` : ""}
+        </p>
+        <p className="mt-1 text-xs leading-relaxed text-slate-500">{hedge.reason}</p>
       </div>
 
       {/* Risk signals */}

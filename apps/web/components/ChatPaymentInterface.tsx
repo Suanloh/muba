@@ -51,7 +51,7 @@ interface Draft {
 
 export function ChatPaymentInterface() {
   const { connection } = useMovaWallet();
-  const { submitIntent } = useAppStore();
+  const { submitIntent, resetVersion } = useAppStore();
 
   const connected = connection.status === "connected";
   const ownerAddress = connection.account?.address ?? null;
@@ -119,9 +119,6 @@ export function ChatPaymentInterface() {
     if (result.meta === "none") {
       if (result.validated && result.explanation) {
         setDraft({ validated: result.validated, explanation: result.explanation });
-        // The send button leads the user into the review flow (confirm
-        // payment → payment preview → approve & settle).
-        if (canConfirmIntent(result.validated)) scrollToPlanReview();
       }
       return;
     }
@@ -153,6 +150,17 @@ export function ChatPaymentInterface() {
     setError(null);
     submittedRef.current = null;
   };
+
+  // "Reset demo" (store clearAll) bumps resetVersion — the chat conversation
+  // is local state, so we reset it here or a stale working intent from the
+  // previous payment leaks into the next one ("conflicting instructions").
+  useEffect(() => {
+    setConversation(createPaymentConversation());
+    setDraft(null);
+    setError(null);
+    submittedRef.current = null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional full reset
+  }, [resetVersion]);
 
   const canConfirm = !!draft && canConfirmIntent(draft.validated) && connected && !busy;
 
@@ -347,8 +355,8 @@ function IntentCard({ draft, submittedId }: { draft: Draft; submittedId: string 
 
       {!ok && validated.errors.length > 0 && (
         <ul className="mt-2 list-inside list-disc space-y-0.5 text-xs text-rose-600">
-          {validated.errors.map((e) => (
-            <li key={e.code}>{e.message}</li>
+          {validated.errors.map((e, i) => (
+            <li key={`${e.code}-${i}`}>{e.message}</li>
           ))}
         </ul>
       )}

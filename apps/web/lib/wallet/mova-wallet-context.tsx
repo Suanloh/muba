@@ -49,6 +49,7 @@ import {
   type DappNetwork,
 } from "./networks.js";
 import { switchDemoWalletChain } from "./demo-wallet.js";
+import { switchZkLoginWalletChain } from "./zklogin-wallet.js";
 
 export interface MovaWalletContextValue {
   connection: WalletConnectionState;
@@ -87,6 +88,14 @@ function messageFromError(err: unknown): string {
   if (err instanceof MovaError) return err.message;
   if (err instanceof Error) return err.message;
   return String(err);
+}
+
+/** Human-readable, actionable network-mismatch message (detected vs expected). */
+function networkMismatchMessage(network: MovaNetworkState): string {
+  if (network.unknown) {
+    return `MOVA could not detect the wallet's network — expected ${network.expected}. Switch the wallet or app to ${network.expected} before approving or executing.`;
+  }
+  return `Wallet is on ${network.detectedNetwork}, but MOVA expects ${network.expected}. Switch the wallet or app to ${network.expected} before approving or executing.`;
 }
 
 export function MovaWalletProvider({ children }: { children: React.ReactNode }) {
@@ -157,8 +166,10 @@ export function MovaWalletProvider({ children }: { children: React.ReactNode }) 
     (networkName: DappNetwork) => {
       try {
         dAppKit.switchNetwork(networkName);
-        // Best-effort: the in-page demo wallet can switch its own chain.
-        switchDemoWalletChain(chainForNetwork(dappNetworkToMova(networkName)));
+        const chain = chainForNetwork(dappNetworkToMova(networkName));
+        // Best-effort: the in-page demo + zkLogin wallets can switch their own chain.
+        switchDemoWalletChain(chain);
+        switchZkLoginWalletChain(chain);
       } catch (err) {
         setError(messageFromError(err));
       }
@@ -172,7 +183,12 @@ export function MovaWalletProvider({ children }: { children: React.ReactNode }) 
         return { ok: false, digest: null, simulated: false, error: "No wallet connected." };
       }
       if (!network.matches) {
-        return { ok: false, digest: null, simulated: false, error: "Wallet network does not match the MOVA expected network." };
+        return {
+          ok: false,
+          digest: null,
+          simulated: false,
+          error: networkMismatchMessage(network),
+        };
       }
       try {
         const res = await dAppKit.signAndExecuteTransaction({ transaction });

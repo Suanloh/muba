@@ -59,7 +59,7 @@ function cameraErrorMessage(err: unknown): string {
 
 export function QrScanInterface() {
   const { connection } = useMovaWallet();
-  const { submitIntent } = useAppStore();
+  const { submitIntent, resetVersion } = useAppStore();
 
   const connected = connection.status === "connected";
   const ownerAddress = connection.account?.address ?? null;
@@ -222,6 +222,14 @@ export function QrScanInterface() {
     setManualError(null);
     setCameraError(null);
   };
+
+  // "Reset demo" (store clearAll) bumps resetVersion — clear the decoded QR
+  // result + any camera state so a stale scan can't be re-confirmed.
+  useEffect(() => {
+    resetScan();
+    stopCamera();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional full reset
+  }, [resetVersion]);
 
   const handleConfirm = async () => {
     if (!result || !canConfirmQrIntent(result)) return;
@@ -446,12 +454,16 @@ function QrResultCard({
         </ul>
       )}
 
-      {/* Field-level errors (missing / ambiguous) */}
+      {/* Field-level errors (missing / ambiguous). QR-integrity errors are
+          already shown in their own fail-closed block above — excluding them
+          here prevents the CRC mismatch from being rendered twice. */}
       {!ok && result.errors.length > 0 && (
         <ul className="mt-2 list-inside list-disc space-y-0.5 text-xs text-rose-600">
-          {result.errors.map((e) => (
-            <li key={e.code}>{e.message}</li>
-          ))}
+          {result.errors
+            .filter((e) => !result.qrErrors.includes(e.message))
+            .map((e, i) => (
+              <li key={`${e.code}-${i}`}>{e.message}</li>
+            ))}
         </ul>
       )}
 
