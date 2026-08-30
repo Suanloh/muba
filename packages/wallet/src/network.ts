@@ -70,7 +70,13 @@ export function networkDefinition(
 
 /** Expected MOVA network for a runtime boundary (dev → devnet, etc.). */
 export function expectedNetworkForEnv(env: RuntimeEnv): Network {
-  return NETWORK_BOUNDARIES[env].network;
+  const boundary = NETWORK_BOUNDARIES[env];
+  if (!boundary) {
+    throw new Error(
+      `invalid MOVA env "${env}" — expected one of: dev, testnet, mainnet`,
+    );
+  }
+  return boundary.network;
 }
 
 /**
