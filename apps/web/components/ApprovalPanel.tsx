@@ -125,7 +125,7 @@ export function ApprovalPanel() {
         {error && <p className="text-xs text-rose-600">{error}</p>}
 
         {approved && (
-          <Button variant="primary" disabled={disabled || busy} onClick={() => void run()}>
+          <Button variant="success" disabled={disabled || busy} onClick={() => void run()}>
             {busy
               ? "Authorizing & settling…"
               : WEB_SETTLEMENT_MODE === "real"

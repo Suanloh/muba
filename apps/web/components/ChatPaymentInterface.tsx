@@ -177,8 +177,8 @@ export function ChatPaymentInterface() {
               <div
                 className={`max-w-[85%] whitespace-pre-wrap rounded-xl px-3 py-2 text-sm ${
                   t.role === "user"
-                    ? "bg-sky-600 text-white"
-                    : "border border-slate-200 bg-white text-slate-700"
+                    ? "bg-signal text-white"
+                    : "border border-hairline bg-surface text-ink"
                 }`}
               >
                 {t.role === "mova" && <span className="mr-1 font-semibold text-violet-600">MOVA</span>}
@@ -188,7 +188,7 @@ export function ChatPaymentInterface() {
           ))}
           {busy && (
             <div className="flex justify-start">
-              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-400">
+              <div className="rounded-xl border border-hairline bg-surface px-3 py-2 text-sm text-faint">
                 Working…
               </div>
             </div>

@@ -216,7 +216,7 @@ export function PaymentPreviewPanel() {
           </label>
           <div className="flex flex-wrap gap-2">
             <Button
-              variant="primary"
+              variant="success"
               disabled={!connected || !isAcknowledged || busy !== null}
               onClick={() => void run("approve")}
             >

@@ -1,6 +1,14 @@
 "use client";
 import React from "react";
 
+/**
+ * MOVA UI primitives. These are the only four rendering mechanics the app
+ * uses — cards, status badges, buttons, and mono code chips — styled with the
+ * design tokens from globals.css (no hardcoded colors). Badge tones map onto
+ * the four semantic status colors (signal / ledger / ember / alarm); every
+ * number, address, hash, and state name renders in the mono face.
+ */
+
 export function Card({
   title,
   subtitle,
@@ -13,11 +21,17 @@ export function Card({
   className?: string;
 }) {
   return (
-    <section className={`rounded-xl border border-slate-200 bg-white shadow-sm ${className}`}>
+    <section
+      className={`rounded-[18px] border border-hairline bg-surface shadow-card ${className}`}
+    >
       {(title || subtitle) && (
-        <header className="border-b border-slate-100 px-5 py-3">
-          {title && <h2 className="text-sm font-semibold tracking-wide text-slate-800">{title}</h2>}
-          {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
+        <header className="border-b border-hairline px-5 py-4">
+          {title && (
+            <h2 className="font-display text-[16px] font-semibold tracking-[-0.01em] text-ink">
+              {title}
+            </h2>
+          )}
+          {subtitle && <p className="mt-0.5 text-xs text-muted">{subtitle}</p>}
         </header>
       )}
       <div className="px-5 py-4">{children}</div>
@@ -33,15 +47,17 @@ export function Badge({
   children: React.ReactNode;
 }) {
   const tones: Record<string, string> = {
-    slate: "bg-slate-100 text-slate-700 border-slate-200",
-    green: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    amber: "bg-amber-50 text-amber-700 border-amber-200",
-    red: "bg-rose-50 text-rose-700 border-rose-200",
-    blue: "bg-sky-50 text-sky-700 border-sky-200",
-    violet: "bg-violet-50 text-violet-700 border-violet-200",
+    slate: "border-hairline bg-surface-2 text-muted",
+    green: "border-ledger-border bg-ledger-bg text-ledger-text",
+    amber: "border-ember-border bg-ember-bg text-ember-text",
+    red: "border-alarm-border bg-alarm-bg text-alarm-text",
+    blue: "border-signal-border bg-signal-bg text-signal-text",
+    violet: "border-signal-border bg-signal-bg text-signal-text",
   };
   return (
-    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${tones[tone]}`}>
+    <span
+      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.04em] ${tones[tone]}`}
+    >
       {children}
     </span>
   );
@@ -54,23 +70,31 @@ export function Button({
   children,
   className = "",
 }: {
-  variant?: "primary" | "secondary" | "ghost" | "danger";
+  variant?: "primary" | "secondary" | "ghost" | "danger" | "success";
   disabled?: boolean;
   onClick?: () => void;
   children: React.ReactNode;
   className?: string;
 }) {
   const variants: Record<string, string> = {
-    primary: "bg-sky-600 text-white hover:bg-sky-700 disabled:bg-slate-300",
-    secondary: "bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 disabled:text-slate-400",
-    ghost: "text-slate-600 hover:bg-slate-100 disabled:text-slate-300",
-    danger: "bg-rose-600 text-white hover:bg-rose-700 disabled:bg-slate-300",
+    // signal — the active / in-progress CTA
+    primary: "border border-signal bg-signal text-white hover:opacity-90 disabled:opacity-35",
+    // ledger — the irreversible human-approval action (btn-solid-ledger)
+    success: "border border-ledger bg-ledger text-[#08150F] hover:opacity-90 disabled:opacity-35",
+    // neutral surface button
+    secondary:
+      "border border-hairline-strong bg-surface text-ink hover:bg-surface-2 disabled:text-faint",
+    // text button
+    ghost: "text-muted hover:bg-surface-2 hover:text-ink disabled:text-faint",
+    // outline that turns alarm on hover (btn-outline-alarm) — for reject/refuse
+    danger:
+      "border border-hairline-strong bg-transparent text-muted hover:border-alarm hover:text-alarm-text disabled:text-faint",
   };
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`inline-flex items-center justify-center rounded-lg px-3.5 py-2 text-sm font-medium transition disabled:cursor-not-allowed ${variants[variant]} ${className}`}
+      className={`inline-flex items-center justify-center rounded-[12px] px-3.5 py-2 text-sm font-medium transition disabled:cursor-not-allowed ${variants[variant]} ${className}`}
     >
       {children}
     </button>
@@ -79,6 +103,8 @@ export function Button({
 
 export function Code({ children }: { children: React.ReactNode }) {
   return (
-    <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-700">{children}</code>
+    <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs text-ink">
+      {children}
+    </code>
   );
 }

@@ -127,7 +127,7 @@ function AuditRow({
         <span className="shrink-0 text-[11px] text-slate-400">{open ? "▾" : "▸"}</span>
       </button>
       {open && (
-        <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-slate-900 p-3 font-mono text-[11px] leading-relaxed text-slate-100">
+        <pre className="mt-2 max-h-64 overflow-auto rounded-[10px] bg-code p-3 font-mono text-[11px] leading-relaxed text-code-text">
           {JSON.stringify(entry.data, null, 2)}
         </pre>
       )}
