@@ -72,6 +72,35 @@ test("uncorrected differing amount -> cross-turn conflict (warning path is error
   assert.ok(v?.errors.some((e) => e.code === "CONFLICTING_INSTRUCTIONS"));
 });
 
+test("a COMPLETE new payment replaces the working intent (no stale carryover)", () => {
+  // Regression: changing the last message to a full new payment must NOT leak
+  // the previous amount/recipient into the new input nor flag a spurious
+  // "changed without a correction" conflict.
+  let conv = createPaymentConversation();
+  ({ conversation: conv } = processTurn(conv, "Pay Alice 200 USDC", ctx));
+  assert.equal(conv.workingIntent?.canonicalAmount?.amount, "200000000");
+
+  ({ conversation: conv } = processTurn(conv, "Pay Bob 100 USDC", ctx));
+  const v = conv.workingIntent;
+  assert.equal(v?.ok, true);
+  assert.equal(v?.canonicalAmount?.amount, "100000000");
+  assert.equal(v?.proposal?.recipient.name, "Bob");
+  assert.ok(!v?.errors.some((e) => e.code === "CONFLICTING_INSTRUCTIONS"));
+  // a fresh complete intent carries no stale context flags either
+  assert.equal(v?.needsClarification, false);
+});
+
+test("complete new payment also replaces when currency+recipient differ", () => {
+  let conv = createPaymentConversation();
+  ({ conversation: conv } = processTurn(conv, "Pay Alice 200 USDC", ctx));
+  ({ conversation: conv } = processTurn(conv, "Send 5 SUI to @treasury", ctx));
+  const v = conv.workingIntent;
+  assert.equal(v?.ok, true);
+  assert.equal(v?.proposal?.amountRaw, "5");
+  assert.equal(v?.proposal?.currencyInput, "SUI");
+  assert.ok(!v?.errors.some((e) => e.code === "CONFLICTING_INSTRUCTIONS"));
+});
+
 test("recipient change with 'instead' is a clean correction", () => {
   let conv = createPaymentConversation();
   ({ conversation: conv } = processTurn(conv, "Pay Alice 200 USDC", ctx));

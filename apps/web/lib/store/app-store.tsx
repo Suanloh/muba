@@ -18,7 +18,13 @@ import React, {
 } from "react";
 import { failureUserMessage } from "@mova/core";
 import { MovaError, ErrorCode } from "@mova/logger";
-import type { AuditEvent, ExecutionFailureInfo, Network } from "@mova/types";
+import type { AuditEvent, ExecutionFailureInfo, Network, PaymentState } from "@mova/types";
+import { movaDb } from "@/lib/supabase/mova-db";
+import {
+  syncAuditBestEffort,
+  syncReceiptBestEffort,
+  syncRecordBestEffort,
+} from "@/lib/supabase/sync";
 import type {
   GateVerdict,
   MovaNetworkState,
@@ -121,6 +127,15 @@ interface AppStoreValue {
    * "Reset demo" so stale working intents can't leak into the next payment.
    */
   resetVersion: number;
+  /** Supabase data-layer state — connection + best-effort sync counters. */
+  supabase: {
+    status: "online" | "offline";
+    syncedRecords: number;
+    syncedAudit: number;
+    syncedReceipts: number;
+    realtimeEvents: number;
+    lastError: string | null;
+  };
 }
 
 const AppStoreContext = createContext<AppStoreValue | null>(null);
@@ -143,6 +158,81 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const [view, setViewState] = useState<AppView>("home");
   const [planRun, setPlanRunState] = useState<PlanRunState>({ recordId: null, status: "idle", entries: [] });
   const [resetVersion, setResetVersion] = useState(0);
+
+  // --- Supabase data layer ------------------------------------------------
+  const [supabaseState, setSupabaseState] = useState<AppStoreValue["supabase"]>({
+    status: movaDb.status,
+    syncedRecords: 0,
+    syncedAudit: 0,
+    syncedReceipts: 0,
+    realtimeEvents: 0,
+    lastError: null,
+  });
+  /** recordId -> last synced state (re-sync only on state transitions). */
+  const lastSyncedRecordStateRef = useRef<Map<string, string>>(new Map());
+  const syncedAuditRef = useRef<Set<string>>(new Set());
+  const syncedReceiptsRef = useRef<Set<string>>(new Set());
+
+  // Best-effort sync to Supabase (via the mova-sync Edge Function). When the
+  // data layer is offline this is a no-op that never blocks the payment flow;
+  // errors are surfaced in the Settings "Data layer" panel, never thrown.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      for (const record of records) {
+        if (lastSyncedRecordStateRef.current.get(record.id) === record.state) continue;
+        const res = await syncRecordBestEffort(record);
+        if (cancelled) return;
+        if (res.ok && !res.offline) {
+          lastSyncedRecordStateRef.current.set(record.id, record.state);
+          setSupabaseState((p) => ({ ...p, syncedRecords: p.syncedRecords + 1, lastError: null }));
+        } else if (res.error) {
+          setSupabaseState((p) => ({ ...p, lastError: res.error ?? null }));
+        }
+      }
+      for (const event of audit) {
+        if (syncedAuditRef.current.has(event.id)) continue;
+        const res = await syncAuditBestEffort(event);
+        if (cancelled) return;
+        if (res.ok && !res.offline) {
+          syncedAuditRef.current.add(event.id);
+          setSupabaseState((p) => ({ ...p, syncedAudit: p.syncedAudit + 1, lastError: null }));
+        } else if (res.error) {
+          setSupabaseState((p) => ({ ...p, lastError: res.error ?? null }));
+        }
+      }
+      for (const receipt of receipts) {
+        if (syncedReceiptsRef.current.has(receipt.id)) continue;
+        const res = await syncReceiptBestEffort(receipt);
+        if (cancelled) return;
+        if (res.ok && !res.offline) {
+          syncedReceiptsRef.current.add(receipt.id);
+          setSupabaseState((p) => ({ ...p, syncedReceipts: p.syncedReceipts + 1, lastError: null }));
+        } else if (res.error) {
+          setSupabaseState((p) => ({ ...p, lastError: res.error ?? null }));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [records, audit, receipts]);
+
+  // Realtime: status changes pushed from Supabase are reconciled into the
+  // in-memory store (only for records we already track).
+  useEffect(() => {
+    const unsub = movaDb.subscribeToStatus((change) => {
+      setSupabaseState((p) => ({ ...p, realtimeEvents: p.realtimeEvents + 1, lastError: null }));
+      setRecords((prev) =>
+        prev.map((r) =>
+          r.correlationId === change.correlationId && r.state !== change.status
+            ? { ...r, state: change.status as PaymentState, updatedAt: Date.now() }
+            : r,
+        ),
+      );
+    });
+    return unsub;
+  }, []);
 
   useEffect(() => {
     try {
@@ -628,6 +718,10 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     setPlanRunState({ recordId: null, status: "idle", entries: [] });
     // Bump so local-state components (chat / QR) reset their working intents.
     setResetVersion((v) => v + 1);
+    // Reset the per-id sync watermark so a re-run re-persists fresh records.
+    lastSyncedRecordStateRef.current.clear();
+    syncedAuditRef.current.clear();
+    syncedReceiptsRef.current.clear();
   }, []);
 
   const value = useMemo<AppStoreValue>(
@@ -661,6 +755,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       planRun,
       resetPlanRun,
       resetVersion,
+      supabase: supabaseState,
     }),
     [
       records,
@@ -692,6 +787,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       planRun,
       resetPlanRun,
       resetVersion,
+      supabaseState,
     ],
   );
 

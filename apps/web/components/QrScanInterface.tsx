@@ -16,6 +16,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import jsQR from "jsqr";
+import QRCode from "qrcode";
 import type { QrValidationResult } from "@mova/qr";
 import { currencyLabel } from "@mova/qr";
 import type { SupportedToken } from "@mova/types";
@@ -31,6 +32,7 @@ import {
 } from "@/lib/pipeline/qr-payment";
 import { scrollToPlanReview } from "@/lib/pipeline/scroll-to-review";
 import { shortAddress } from "@/lib/pipeline/format";
+import { DEMO_EMVCO_PAYLOAD, DEMO_QR_SUMMARY } from "@/lib/qr/demo-qr";
 import { Badge, Button, Card } from "./ui";
 
 type CameraState = "idle" | "starting" | "active" | "error" | "unsupported";
@@ -198,20 +200,33 @@ export function QrScanInterface() {
   // Manual fallback + confirm
   // -------------------------------------------------------------------------
 
-  const handleManualDecode = () => {
-    setManualError(null);
-    const payload = manualText.trim();
-    if (!payload) {
-      setManualError("Paste an EMVCo QR payload (or the raw scanned string) to decode it.");
-      return;
-    }
-    try {
-      const v = decodeQrPayload(payload, ctxRef.current);
-      setResult(v);
-      setScanState(v.ok ? "detected" : "error");
-    } catch (err) {
-      setManualError(err instanceof Error ? err.message : String(err));
-    }
+  /** Decode any payload string (manual paste OR the demo QR) into a result. */
+  const decodePayload = useCallback(
+    (payload: string) => {
+      setManualError(null);
+      const p = payload.trim();
+      if (!p) {
+        setManualError("Paste an EMVCo QR payload (or the raw scanned string) to decode it.");
+        return;
+      }
+      try {
+        const v = decodeQrPayload(p, ctxRef.current);
+        setResult(v);
+        setScanState(v.ok ? "detected" : "error");
+      } catch (err) {
+        setResult(null);
+        setManualError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [],
+  );
+
+  const handleManualDecode = () => decodePayload(manualText);
+
+  /** Load the demo QR payload into the scanner and decode it (one click demo). */
+  const loadDemoQr = () => {
+    setManualText(DEMO_EMVCO_PAYLOAD);
+    decodePayload(DEMO_EMVCO_PAYLOAD);
   };
 
   const resetScan = () => {
@@ -343,6 +358,9 @@ export function QrScanInterface() {
           {manualError && <p className="text-xs text-rose-600">{manualError}</p>}
         </div>
 
+        {/* Demo QR — a real, scannable EMVCo payload for the demo */}
+        <DemoQrCard onLoad={loadDemoQr} />
+
         {/* Result card */}
         {result && (
           <QrResultCard
@@ -365,6 +383,77 @@ export function QrScanInterface() {
         </p>
       </div>
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Demo QR card — a real, scannable EMVCo payload for the demo
+// ---------------------------------------------------------------------------
+
+function DemoQrCard({ onLoad }: { onLoad: () => void }) {
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    QRCode.toDataURL(DEMO_EMVCO_PAYLOAD, { width: 168, margin: 1, errorCorrectionLevel: "M" })
+      .then((url) => {
+        if (mounted) setDataUrl(url);
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(DEMO_EMVCO_PAYLOAD);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard unavailable — the payload text is still visible below */
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-violet-200 bg-violet-50/40 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium text-slate-600">Demo QR — point your phone at this</p>
+        <Badge tone="violet">EMVCo demo</Badge>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-4">
+        {dataUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- QR data-URL from the qrcode lib
+          <img
+            src={dataUrl}
+            alt="Demo EMVCo payment QR"
+            className="h-28 w-28 shrink-0 rounded-md bg-white p-1 shadow"
+          />
+        ) : (
+          <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-md bg-white text-[11px] text-slate-400">
+            rendering…
+          </div>
+        )}
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <p className="text-[11px] leading-relaxed text-slate-500">
+            {DEMO_QR_SUMMARY}. A real scannable EMVCo payload (CRC-valid) — scan it with a phone
+            camera, or load it straight into the scanner for the one-click demo.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="primary" className="text-xs" onClick={onLoad}>
+              Load into scanner
+            </Button>
+            <Button variant="secondary" className="text-xs" onClick={() => void copy()}>
+              {copied ? "✓ Copied" : "Copy payload"}
+            </Button>
+          </div>
+        </div>
+      </div>
+      <p className="mt-2 break-all font-mono text-[10px] leading-relaxed text-slate-400">
+        {DEMO_EMVCO_PAYLOAD}
+      </p>
+    </div>
   );
 }
 

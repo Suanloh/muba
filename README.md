@@ -58,11 +58,20 @@ with `npx tsx scripts/settle-real.ts` (real confirmed on-chain digest).
 
 ```bash
 npm run typecheck    # 0 errors across all packages + web
-npm test             # 180 tests (ai, core, integrations, qr, wallet)
+npm test             # 214 tests (ai, core, db, integrations, qr, wallet)
 npm run integration  # 94 checks: full NL + QR pipes, 11 failure modes, 6 AI-safety invariants
 npm run smoke        # Phase 0 smoke: 37 checks
+npm run verify:qr    # demo EMVCo QR payload decodes with a valid CRC
 npm run build -w @mova/web   # clean production build
 ```
+
+Also in this build: payments **persist to Supabase** (Postgres + Realtime, via the
+`mova-sync` Edge Function — Settings → "Data layer · Supabase"; runs in-memory
+and labels itself honestly when not configured), the audit report **exports a
+branded PDF** (Activity → Audit trail → Export PDF), the **Thetanuts V4
+OptionBook streams in realtime** (Settings → "Thetanuts OptionBook · realtime"),
+and the **QR tab ships a real, scannable demo QR** (Load into scanner → decode →
+confirm).
 
 `npm run integration` is the judge-facing harness: it drives the **exact web
 pipeline** end-to-end and proves the 8 differentiators, every failure class, and

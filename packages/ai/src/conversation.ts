@@ -92,6 +92,19 @@ export function mergeWithWorking(
   const base = working?.proposal ?? null;
   if (!base) return { proposal: next, inferred: [] };
 
+  // A COMPLETE fresh intent — amount, currency AND recipient all present in
+  // this one message — is a BRAND-NEW payment, not a follow-up on the working
+  // draft. Replace the working intent outright instead of merging: this stops
+  // stale values from the previous message leaking into the new input (the
+  // "last value affects the new value" bug) and stops spurious
+  // "changed without a correction" conflicts when the user simply starts a new
+  // payment after changing the previous one.
+  const isCompleteStandalone =
+    next.amountRaw !== null && next.currencyInput !== "" && next.recipient.value !== "";
+  if (isCompleteStandalone) {
+    return { proposal: next, inferred: [] };
+  }
+
   const inferred: string[] = [];
   const merged: StructuredIntentProposal = { ...next, conflicts: [...next.conflicts] };
 

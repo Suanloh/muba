@@ -1,16 +1,18 @@
 # MOVA — Edge Functions
 
-**Phase 0 placeholder.** Implemented in Phase 1 (see `docs/roadmap.md`).
+**Implemented (Phase 17).**
 
-Each function exposes the HTTP contract in `docs/api-contracts.md` and runs the
-deterministic engines from `packages/core` + providers from
-`packages/integrations`. Auth via Supabase JWT; role checks against the `User`
-table (or Supabase app_metadata).
+Each function exposes the HTTP contract the web app consumes. Writes use the
+service-role key (server-side only); reads the web app may make go through the
+function so RLS stays intact for the demo (no Auth session).
 
-| Function | Route (Phase 1) | Purpose |
+| Function | Route | Purpose |
 | --- | --- | --- |
-| `intents` | `POST/GET /functions/v1/intents` | Create (text or QR), status, audit |
-| `approvals` | `POST /functions/v1/approvals` | Create request / record decision |
-| `compliance` | `POST /functions/v1/compliance/assess` | Run/read compliance |
-| `risk` | `POST /functions/v1/risk/assess` | Run/read risk + hedge quote |
-| `execute` | `POST /functions/v1/execute` | Simulate + settle (only if `APPROVED`) |
+| `mova-sync` | `POST /functions/v1/mova-sync` | Persist `{kind: intent|audit|receipt, item}` with the service-role key |
+| `mova-sync` | `GET /functions/v1/mova-sync?kind=audit&correlationId=<id>` | Read the append-only audit trail for a correlation |
+| `mova-sync` | `GET /functions/v1/mova-sync?kind=health` | Connection probe (used by the Settings panel) |
+
+Deploy: `supabase functions deploy mova-sync --no-verify-jwt` (no JWT required —
+the demo has no Auth session; RLS stays intact because writes go through the
+service role). Set `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` in the function
+environment (Supabase injects these automatically when deployed to a project).

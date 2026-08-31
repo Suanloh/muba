@@ -15,6 +15,7 @@
     "@mova/ai": "*",
     "@mova/config": "*",
     "@mova/core": "*",
+    "@mova/db": "*",
     "@mova/integrations": "*",
     "@mova/logger": "*",
     "@mova/qr": "*",
@@ -23,6 +24,11 @@
     "@mysten/dapp-kit-react": "^2.1.21",
     "@mysten/sui": "^2.27.0",
     "@mysten/wallet-standard": "^0.21.19",
+    "@supabase/supabase-js": "^2.112.4",
+    "@thetanuts-finance/thetanuts-client": "^0.3.0",
+    "ethers": "^6.17.0",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "jsqr": "^1.4.0",
     "next": "^15.1.6",
     "qrcode": "^1.5.4",
@@ -40,4 +46,3 @@
     "typescript": "^5.7.0"
   }
 }
-

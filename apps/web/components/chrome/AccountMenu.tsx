@@ -4,7 +4,7 @@
  * connected state (Sui or EVM) with the wallet value + a menu, or a primary
  * "Connect wallet" button opening the grouped multi-ecosystem picker.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMovaWallet } from "@/lib/wallet/mova-wallet-context";
 import { useEVM } from "@/lib/wallet/evm/hook";
 import { useAppStore } from "@/lib/store/app-store";
@@ -18,10 +18,21 @@ export function AccountMenu() {
   const evm = useEVM();
   const { setView } = useAppStore();
   const [open, setOpen] = useState(false);
+  // `mounted` gates any client-only wallet state (dapp-kit auto-connect flips
+  // status to "connecting" on the client while SSR sees "disconnected").
+  // Keeping the first client render identical to the server avoids hydration
+  // mismatches on the Connect button's `disabled` attribute and label.
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const suiConnected = sui.connection.status === "connected" && sui.connection.account;
   const evmConnected = evm.connection.status === "connected";
-  const connecting = sui.connection.status === "connecting" || evm.connection.status === "connecting";
+  const connecting =
+    mounted &&
+    (sui.connection.status === "connecting" || evm.connection.status === "connecting");
 
   const address = suiConnected
     ? sui.connection.account!.address

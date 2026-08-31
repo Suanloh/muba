@@ -16,6 +16,7 @@
     "smoke": "tsx scripts/phase0-smoke.ts",
     "routing:demo": "tsx scripts/routing-demo.ts",
     "risk:demo": "tsx scripts/risk-hedge-demo.ts",
+    "verify:qr": "tsx scripts/verify-demo-qr.ts",
     "integration": "tsx --tsconfig apps/web/tsconfig.json scripts/integration-test.ts"
   },
   "devDependencies": {
@@ -29,6 +30,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.4",
     "qrcode": "^1.5.4"
   }
 }

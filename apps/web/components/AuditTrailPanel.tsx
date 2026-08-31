@@ -14,6 +14,7 @@ import { buildAuditTrail } from "@mova/core";
 import { PAYMENT_AUDIT_STAGES, type PaymentAuditEntry } from "@mova/types";
 import { useAppStore } from "@/lib/store/app-store";
 import { formatDateTime, shortId } from "@/lib/pipeline/format";
+import { downloadAuditPdf, type AuditReportData } from "@/lib/reports/pdf-report";
 import { Badge, Button, Card } from "./ui";
 
 const OUTCOME_TONE: Record<string, "green" | "red" | "amber" | "blue" | "slate" | "violet"> = {
@@ -38,7 +39,7 @@ export function AuditTrailPanel() {
   const [open, setOpen] = useState<Set<string>>(new Set());
   // Hidden by default — revealed only when the user requests an audit report.
   const [requested, setRequested] = useState(false);
-  const [exported, setExported] = useState(false);
+  const [exported, setExported] = useState<"json" | "pdf" | null>(null);
   const record = records.find((r) => r.id === activeRecordId) ?? records[0] ?? null;
 
   const trail = useMemo(
@@ -67,31 +68,39 @@ export function AuditTrailPanel() {
     entries: trail.entries.filter((e) => e.stage === stage),
   })).filter((g) => g.entries.length > 0);
 
-  /** Export the full audit report — every phase, raw decision payloads included. */
-  const exportReport = () => {
-    const report = {
-      title: "MOVA payment audit report",
-      generatedAt: new Date().toISOString(),
-      record: {
-        id: record.id,
-        correlationId: record.correlationId,
-        state: record.state,
-        amount: record.amount,
-        recipient: record.recipient,
-        createdAt: record.createdAt,
-        updatedAt: record.updatedAt,
-        approval: record.approval ?? null,
-        execution: record.execution ?? null,
-        settlement: record.settlement ?? null,
-      },
-      lifecycle: trail.statusSteps,
-      phases: PAYMENT_AUDIT_STAGES.map((stage) => ({
-        stage,
-        entries: trail.entries.filter((e) => e.stage === stage),
-      })).filter((g) => g.entries.length > 0),
-      currentState: trail.currentState,
-      terminal: trail.terminal,
-    };
+  /** The full audit report — every phase, raw decision payloads included. */
+  const buildReport = (): AuditReportData => ({
+    title: "MOVA payment audit report",
+    generatedAt: new Date().toISOString(),
+    record: {
+      id: record.id,
+      correlationId: record.correlationId,
+      state: record.state,
+      amount: record.amount,
+      recipient: record.recipient,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+      approval: record.approval ?? null,
+      execution: record.execution ?? null,
+      settlement: record.settlement ?? null,
+    },
+    lifecycle: trail.statusSteps,
+    phases: PAYMENT_AUDIT_STAGES.map((stage) => ({
+      stage,
+      entries: trail.entries.filter((e) => e.stage === stage),
+    })).filter((g) => g.entries.length > 0),
+    currentState: trail.currentState,
+    terminal: trail.terminal,
+  });
+
+  const flashExported = (kind: "json" | "pdf") => {
+    setExported(kind);
+    window.setTimeout(() => setExported(null), 3000);
+  };
+
+  /** Export the full audit report as JSON. */
+  const exportJson = () => {
+    const report = buildReport();
     const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -99,8 +108,13 @@ export function AuditTrailPanel() {
     a.download = `mova-audit-report-${record.id.slice(0, 12)}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    setExported(true);
-    window.setTimeout(() => setExported(false), 3000);
+    flashExported("json");
+  };
+
+  /** Export the full audit report as a branded PDF. */
+  const exportPdf = () => {
+    downloadAuditPdf(buildReport());
+    flashExported("pdf");
   };
 
   // Hidden until the user requests the audit report via the file button.
@@ -144,10 +158,14 @@ export function AuditTrailPanel() {
     >
       {/* Report toolbar */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Button variant="secondary" className="gap-2 text-xs" onClick={exportReport}>
-          <DownloadIcon /> Export report (.json)
+        <Button variant="secondary" className="gap-2 text-xs" onClick={exportJson}>
+          <DownloadIcon /> Export (.json)
         </Button>
-        {exported && <span className="font-mono text-[11px] text-emerald-600">✓ exported</span>}
+        <Button variant="primary" className="gap-2 text-xs" onClick={exportPdf}>
+          <PdfIcon /> Export PDF
+        </Button>
+        {exported === "json" && <span className="font-mono text-[11px] text-emerald-600">✓ JSON exported</span>}
+        {exported === "pdf" && <span className="font-mono text-[11px] text-emerald-600">✓ PDF rendered</span>}
         <Button variant="ghost" className="ml-auto text-xs" onClick={() => setRequested(false)}>
           Hide report
         </Button>
@@ -187,6 +205,15 @@ function DownloadIcon() {
   return (
     <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
       <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function PdfIcon() {
+  return (
+    <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+      <path d="M6 2h8l4 4v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14 2v4h4M9 13h6M9 16.5h4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
