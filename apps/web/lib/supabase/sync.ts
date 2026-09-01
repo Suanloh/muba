@@ -12,6 +12,18 @@ import type { AuditEvent } from "@mova/types";
 import type { PaymentRecord, PaymentReceipt } from "@mova/wallet";
 import { movaDb } from "./mova-db";
 
+/**
+ * Strip the domain id prefixes (`pay_`, `receipt_pay_`, …) so the value fits
+ * the schema's `uuid` id / FK columns. Bare UUIDs (audit event ids) pass
+ * through unchanged.
+ */
+function uuidOf(id: string): string {
+  const m = id.match(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+  );
+  return m ? m[0] : id;
+}
+
 /** Deterministic intent ref for a record — matches the DB unique constraint. */
 export function intentRefFor(record: PaymentRecord): string {
   return `PAY-${record.correlationId.slice(0, 8)}-${record.id.slice(0, 4)}`;
@@ -20,7 +32,7 @@ export function intentRefFor(record: PaymentRecord): string {
 export function recordToIntentSync(record: PaymentRecord): MovaIntentSync {
   const failureCode = record.execution?.failure?.code ?? null;
   return {
-    id: record.id,
+    id: uuidOf(record.id),
     correlationId: record.correlationId,
     intentRef: intentRefFor(record),
     source: "CHAT",
@@ -29,16 +41,6 @@ export function recordToIntentSync(record: PaymentRecord): MovaIntentSync {
     status: record.state,
     failureCode,
     walletAddress: record.ownerAddress,
-    meta: {
-      amount: record.amount,
-      recipient: record.recipient,
-      action: record.action,
-      memo: record.memo,
-      validated: record.validated,
-      approval: record.approval,
-      settlement: record.settlement,
-      execution: record.execution,
-    },
     createdAt: new Date(record.createdAt).toISOString(),
     updatedAt: new Date(record.updatedAt).toISOString(),
   };
@@ -63,8 +65,9 @@ export function auditEventToSync(event: AuditEvent): MovaAuditSync {
 
 export function receiptToSync(receipt: PaymentReceipt): MovaReceiptSync {
   return {
-    id: receipt.id,
-    correlationId: receipt.paymentRecordId,
+    id: uuidOf(receipt.id),
+    paymentIntentId: uuidOf(receipt.paymentRecordId),
+    correlationId: uuidOf(receipt.paymentRecordId),
     ownerAddress: receipt.ownerAddress,
     amountAsset: receipt.amount.asset,
     amountAmount: receipt.amount.amount,

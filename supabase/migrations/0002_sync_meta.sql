@@ -31,23 +31,34 @@ language plpgsql
 stable
 as $$
 declare
-  h bigint := 14695981039346656037;
-  c bigint;
-  b bytea := convert_to(coalesce(p_wallet, 'demo'), 'UTF8');
+  h numeric := 14695981039346656037;   -- FNV-1a 64 offset basis (fits numeric)
+  b bytea := convert_to('mova:' || coalesce(p_wallet, ''), 'UTF8');
   i int;
+  hi numeric;
+  lo numeric;
+  digits text;
 begin
+  -- FNV-1a 64-bit, kept in numeric so the 2^64 wrap never overflows bigint
+  -- (the 0002 original used bigint and failed to apply). Bit-identical to the
+  -- edge function's demoUserId. XOR only touches the low byte here.
   for i in 1 .. octet_length(b) loop
-    c := get_byte(b, i - 1);
-    h := (h # (c & 255));
-    h := (h * 1099511628211) & 9223372036854775807;
+    h := (h - mod(h, 256)) + ((mod(h, 256)::int # get_byte(b, i - 1))::numeric);
+    h := mod(h * 1099511628211, 18446744073709551616);
   end loop;
-  -- fold the 64-bit hash into a stable 128-bit UUID (namespace 00000000-0000-0000-0000-0000000000ff)
+  hi := h;
+  lo := mod(h * 2654435761, 18446744073709551616);
+  digits :=
+    lpad(to_hex(floor(hi / 4294967296)::bigint), 8, '0') ||
+    lpad(to_hex(mod(hi, 4294967296)::bigint), 8, '0') ||
+    lpad(to_hex(floor(lo / 4294967296)::bigint), 8, '0') ||
+    lpad(to_hex(mod(lo, 4294967296)::bigint), 8, '0');
+  -- Format the 32 hex chars as a valid uuid (version 4 / variant 8).
   return (
-    lpad(to_hex(h), 16, '0') || '-' ||
-    lpad(to_hex((h / 65536) & 65535), 4, '0') || '-' ||
-    '4' || lpad(to_hex((h / 16) & 4095), 3, '0') || '-' ||
-    '8' || lpad(to_hex(h & 4095), 3, '0') || '-' ||
-    lpad(to_hex(((h * 2654435761) & 4294967295)), 12, '0')
+    substr(digits, 1, 8) || '-' ||
+    substr(digits, 9, 4) || '-' ||
+    '4' || substr(digits, 13, 3) || '-' ||
+    '8' || substr(digits, 16, 3) || '-' ||
+    substr(digits, 19, 12)
   )::uuid;
 end $$;
 

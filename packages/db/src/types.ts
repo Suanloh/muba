@@ -20,7 +20,8 @@ export interface MovaIntentSync {
   status: string;
   failureCode: string | null;
   walletAddress: string | null;
-  meta: Record<string, unknown>;
+  /** Optional denormalized record snapshot (stored only when provided). */
+  meta?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }
@@ -42,6 +43,8 @@ export interface MovaAuditSync {
 
 export interface MovaReceiptSync {
   id: string;
+  /** Payment record this receipt settles — maps to receipts.payment_intent_id (uuid FK). */
+  paymentIntentId?: string | null;
   correlationId: string;
   ownerAddress: string;
   amountAsset: string;

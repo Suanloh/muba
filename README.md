@@ -63,7 +63,7 @@ npm run integration  # 94 checks: full NL + QR pipes, 11 failure modes, 6 AI-saf
 npm run smoke        # Phase 0 smoke: 37 checks
 npm run verify:qr    # demo EMVCo QR payload decodes with a valid CRC
 npm run build -w @mova/web   # clean production build
-npm run dev -w @mova/web 
+npm run dev -w @mova/web -- --port 3001
 ```
 
 Also in this build: payments **persist to Supabase** (Postgres + Realtime, via the
