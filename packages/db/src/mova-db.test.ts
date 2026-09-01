@@ -77,6 +77,33 @@ test("MovaEdgeClient: audit read decodes { items }", async () => {
   assert.equal((items[0] as { event_type: string }).event_type, "SETTLED");
 });
 
+test("MovaEdgeClient: history read decodes { intents, receipts, audit }", async () => {
+  const fetchImpl = (async (input: unknown) => {
+    assert.ok(String(input).includes("kind=history"));
+    return new Response(
+      JSON.stringify({
+        intents: [{ id: "i1" }],
+        receipts: [{ id: "r1" }],
+        audit: [{ id: "a1" }],
+      }),
+      { status: 200 },
+    );
+  }) as typeof fetch;
+
+  const edge = new MovaEdgeClient({ url: "https://abc.supabase.co", anonKey: "k", fetchImpl });
+  const history = await edge.listHistory();
+  assert.equal(history.intents.length, 1);
+  assert.equal(history.receipts.length, 1);
+  assert.equal(history.audit.length, 1);
+});
+
+test("MovaEdgeClient: history read on error returns an empty snapshot", async () => {
+  const fetchImpl = (async () => new Response("nope", { status: 500 })) as typeof fetch;
+  const edge = new MovaEdgeClient({ url: "https://abc.supabase.co", anonKey: "k", fetchImpl });
+  const history = await edge.listHistory();
+  assert.deepEqual(history, { intents: [], receipts: [], audit: [] });
+});
+
 test("MovaEdgeClient: non-ok response surfaces an honest error", async () => {
   const fetchImpl = (async () => new Response("boom", { status: 500 })) as typeof fetch;
   const edge = new MovaEdgeClient({ url: "https://abc.supabase.co", anonKey: "k", fetchImpl });

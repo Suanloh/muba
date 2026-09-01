@@ -25,6 +25,7 @@ import {
   syncReceiptBestEffort,
   syncRecordBestEffort,
 } from "@/lib/supabase/sync";
+import { hydrateHistory } from "@/lib/supabase/hydrate";
 import type {
   GateVerdict,
   MovaNetworkState,
@@ -142,7 +143,11 @@ interface AppStoreValue {
     syncedReceipts: number;
     realtimeEvents: number;
     lastError: string | null;
+    /** True once persisted history has been loaded into the store. */
+    historyLoaded: boolean;
   };
+  /** Re-fetch persisted history from the DB and merge it into the store. */
+  refreshHistory: () => Promise<void>;
 }
 
 const AppStoreContext = createContext<AppStoreValue | null>(null);
@@ -175,6 +180,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     syncedReceipts: 0,
     realtimeEvents: 0,
     lastError: null,
+    historyLoaded: false,
   });
   /** recordId -> last synced state (re-sync only on state transitions). */
   const lastSyncedRecordStateRef = useRef<Map<string, string>>(new Map());
@@ -294,6 +300,83 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     auditRef.current = [...auditRef.current, ...events];
     setAudit([...auditRef.current]);
   }, []);
+
+  // --- History hydration ----------------------------------------------------
+  // The Activity view must reflect the WHOLE persisted history, not just the
+  // records produced by this browser session. Fetch the DB's intents +
+  // receipts + audit trail and merge them into the in-memory store (existing
+  // session data wins on id collisions; DB rows are marked already-synced so
+  // the write path doesn't re-POST them).
+  const hydratingRef = useRef(false);
+  const refreshHistory = useCallback(async () => {
+    if (hydratingRef.current) return;
+    hydratingRef.current = true;
+    try {
+      const snap = await hydrateHistory();
+
+      setAudit((prev) => {
+        const existing = new Set(prev.map((e) => e.id));
+        const merged = [...prev];
+        for (const e of snap.audit) {
+          if (!existing.has(e.id)) {
+            merged.push(e);
+            existing.add(e.id);
+            syncedAuditRef.current.add(e.id);
+          }
+        }
+        merged.sort((a, b) => a.timestamp - b.timestamp);
+        auditRef.current = merged;
+        return merged;
+      });
+
+      setReceipts((prev) => {
+        const existing = new Set(prev.map((r) => r.id));
+        const merged = [...prev];
+        for (const r of snap.receipts) {
+          if (!existing.has(r.id)) {
+            merged.push(r);
+            existing.add(r.id);
+            syncedReceiptsRef.current.add(r.id);
+          }
+        }
+        return merged;
+      });
+
+      setRecords((prev) => {
+        const existing = new Set(prev.map((r) => r.id));
+        const merged = [...prev];
+        for (const r of snap.records) {
+          if (!existing.has(r.id)) {
+            merged.push(r);
+            existing.add(r.id);
+            lastSyncedRecordStateRef.current.set(r.id, r.state);
+          }
+        }
+        merged.sort((a, b) => b.createdAt - a.createdAt);
+        return merged;
+      });
+
+      setSupabaseState((p) => ({ ...p, historyLoaded: true, lastError: null }));
+    } catch (err) {
+      setSupabaseState((p) => ({
+        ...p,
+        historyLoaded: true,
+        lastError: err instanceof Error ? err.message : "could not load history",
+      }));
+    } finally {
+      hydratingRef.current = false;
+    }
+  }, []);
+
+  // Load persisted history once on mount, then again whenever the user opens
+  // the Activity view (picks up data synced from other tabs/devices).
+  useEffect(() => {
+    void refreshHistory();
+  }, [refreshHistory]);
+
+  useEffect(() => {
+    if (view === "activity") void refreshHistory();
+  }, [view, refreshHistory]);
 
   const notify = useCallback(
     (kind: AppNotification["kind"], title: string, message: string, recordId?: string) => {
@@ -771,6 +854,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       resetPlanRun,
       resetVersion,
       supabase: supabaseState,
+      refreshHistory,
     }),
     [
       records,
@@ -805,6 +889,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       resetPlanRun,
       resetVersion,
       supabaseState,
+      refreshHistory,
     ],
   );
 

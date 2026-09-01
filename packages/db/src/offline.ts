@@ -7,7 +7,7 @@
  * "offline (in-memory)" is never confused with "persisted to Supabase".
  * Realtime subscription is a no-op that reports no changes.
  */
-import type { MovaAuditSync, MovaIntentSync, MovaReceiptSync, RealtimeStatusChange, SyncResult } from "./types.js";
+import type { MovaAuditSync, MovaHistory, MovaIntentSync, MovaReceiptSync, RealtimeStatusChange, SyncResult } from "./types.js";
 
 export class OfflineMovaDb {
   readonly status = "offline" as const;
@@ -28,6 +28,10 @@ export class OfflineMovaDb {
 
   async listAudit(_correlationId: string): Promise<Array<Record<string, unknown>>> {
     return [];
+  }
+
+  async listHistory(): Promise<MovaHistory> {
+    return { intents: [], receipts: [], audit: [] };
   }
 
   async ping(): Promise<boolean> {
