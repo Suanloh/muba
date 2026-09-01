@@ -5,6 +5,8 @@
  * On <1024px the multi-ecosystem bottom bar takes over (§2 of the redesign).
  */
 import { useEffect, useState } from "react";
+import { MorphIcon } from "morphicons/react";
+import { Plus, ArrowRight, Settings } from "lucide"; // data, not components
 import { useAppStore, type AppView } from "@/lib/store/app-store";
 import { useMovaWallet } from "@/lib/wallet/mova-wallet-context";
 import { ALL_CHAINS } from "@/lib/chrome/chains";
@@ -40,6 +42,7 @@ export function Sidebar() {
   const { appNetwork } = useMovaWallet();
   const chainActions = useChainActions();
   const [collapsed, setCollapsed] = useState(false);
+  const [payHover, setPayHover] = useState(false);
 
   useEffect(() => {
     try {
@@ -66,13 +69,21 @@ export function Sidebar() {
       } transition-[width] duration-200`}
     >
       <div className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
-        {/* New payment primary action */}
+        {/* New payment primary action — Plus morphs to ArrowRight on hover (morphicons + lucide data). */}
         <button
           type="button"
           onClick={() => setView("home")}
+          onMouseEnter={() => setPayHover(true)}
+          onMouseLeave={() => setPayHover(false)}
           className="flex w-full items-center justify-center gap-2 rounded-[12px] border border-signal bg-signal px-3 py-2 text-sm font-medium text-white transition hover:opacity-90"
         >
-          <Icon d="M12 5v14M5 12h14" />
+          <MorphIcon
+            icon={payHover ? ArrowRight : Plus}
+            size={18}
+            strokeWidth={2}
+            spring="snappy"
+            reducedMotion="user"
+          />
           {!collapsed && <span>New payment</span>}
         </button>
 
@@ -94,7 +105,11 @@ export function Sidebar() {
                 {active && (
                   <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-signal" aria-hidden="true" />
                 )}
-                <Icon d={item.d} extra={item.extra} />
+                {item.id === "settings" ? (
+                  <MorphIcon icon={Settings} size={18} strokeWidth={2} spring="snappy" reducedMotion="user" />
+                ) : (
+                  <Icon d={item.d} extra={item.extra} />
+                )}
                 {!collapsed && (
                   <span className="flex min-w-0 flex-col items-start">
                     <span className="truncate">{item.label}</span>

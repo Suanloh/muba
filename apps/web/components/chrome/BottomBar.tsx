@@ -5,6 +5,8 @@
  * account/wallet. Replaces the sidebar on small screens; safe-area aware.
  */
 import { useState } from "react";
+import { MorphIcon } from "morphicons/react";
+import { Settings, Zap } from "lucide"; // data, not components
 import { useAppStore, type AppView } from "@/lib/store/app-store";
 import { useMovaWallet } from "@/lib/wallet/mova-wallet-context";
 import { QrScanInterface } from "@/components/QrScanInterface";
@@ -101,7 +103,9 @@ export function BottomBar() {
             active={sheet === "actions"}
             onClick={() => setSheet("actions")}
             label="Actions"
-            icon={<BarIcon d="M5 12h.01M12 12h.01M19 12h.01" />}
+            icon={
+              <MorphIcon icon={Zap} size={20} strokeWidth={2} spring="snappy" reducedMotion="user" />
+            }
           />
           <Slot
             active={sheet === "account"}
@@ -140,7 +144,11 @@ export function BottomBar() {
               }}
               className="flex w-full items-center gap-3 rounded-[10px] px-3 py-2.5 text-left text-sm text-muted transition hover:bg-surface-2 hover:text-ink"
             >
-              <BarIcon d={a.d} />
+              {a.id === "settings" ? (
+                <MorphIcon icon={Settings} size={20} strokeWidth={2} spring="snappy" reducedMotion="user" />
+              ) : (
+                <BarIcon d={a.d} />
+              )}
               <span className="flex flex-col">
                 <span className="font-medium text-ink">{a.label}</span>
                 <span className="text-[11px] text-faint">{a.hint}</span>
