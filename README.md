@@ -36,7 +36,7 @@ value move.
 
 ```bash
 npm install
-npm run dev -w @mova/web        # open http://localhost:3000
+npm run dev -w @mova/web -- --port 3001      # open http://localhost:3001
 ```
 
 Connect the built-in **MOVA Demo Wallet**, then:
