@@ -44,17 +44,35 @@ export const ZKLOGIN_CONFIG = {
 /** localStorage key for the per-user zkLogin salt. */
 const SALT_KEY = "mova-zklogin-salt";
 
+/**
+ * A valid zkLogin salt for the proving service: a positive decimal bigint
+ * that fits in EXACTLY 16 bytes (128 bits). The prover rejects anything that
+ * is not 16 bytes with an InputValidationError.
+ */
+function isValidZkLoginSalt(salt: string): boolean {
+  if (!/^\d+$/.test(salt)) return false;
+  const bn = BigInt(salt);
+  if (bn <= 0n) return false;
+  return bn < (1n << 128n);
+}
+
 /** Read (or create) the per-user salt used in address derivation. */
 export function loadOrCreateUserSalt(sub: string): string {
   try {
     const existing = localStorage.getItem(`${SALT_KEY}:${sub}`);
-    if (existing) return existing;
+    // A stale salt from an older build (up to 32 bytes) is invalid — the
+    // proving service requires 16 bytes, so regenerate it for this user.
+    if (existing && isValidZkLoginSalt(existing)) return existing;
   } catch {
     /* private mode — fall through to a fresh salt */
   }
-  // Fresh random salt within the BN254 field (BigInt-friendly decimal).
-  const salt = (crypto.getRandomValues(new Uint32Array(4))
-    .reduce((acc, x) => (acc * 0x100000000n + BigInt(x)) & ((1n << 254n) - 1n), 0n))
+  // Fresh random 16-byte (128-bit) salt — the proving service requires the
+  // salt to be exactly 16 bytes. The high bit is set so it always occupies
+  // the full 16-byte magnitude.
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[0] = ((bytes[0] ?? 0) & 0x7f) | 0x80; // keep within 128 bits, but force 16 bytes
+  const salt = Array.from(bytes)
+    .reduce((acc, b) => (acc << 8n) | BigInt(b), 0n)
     .toString();
   try {
     localStorage.setItem(`${SALT_KEY}:${sub}`, salt);
@@ -251,9 +269,17 @@ async function fetchZkProof(opts: {
     );
   }
   if (!res.ok) {
+    // Include the proving service's own error so a 400 is diagnosable (e.g.
+    // "Salt … must be 16 bytes", "Invalid nonce", "Invalid maxEpoch").
+    let detail = "";
+    try {
+      detail = (await res.text()).slice(0, 300);
+    } catch {
+      /* response body unreadable */
+    }
     throw new MovaError(
       ErrorCode.WALLET_CONNECTION_FAILED,
-      `zkLogin proving service returned ${res.status}.`,
+      `zkLogin proving service returned ${res.status}.${detail ? ` ${detail}` : ""}`,
     );
   }
   const data = (await res.json()) as {
@@ -294,7 +320,44 @@ export function zkLoginSigningMaterial(session: ZkLoginSession): {
   return { inputs, maxEpoch: session.maxEpoch };
 }
 
-/** Resolve which login mode to use (real when configured, else demo). */
+/** localStorage key for the user's zkLogin mode preference. */
+const MODE_KEY = "mova-zklogin-mode";
+
+/** How the user wants to run zkLogin: follow config (auto), offline demo, or real OAuth. */
+export type ZkLoginModeChoice = "auto" | "demo" | "real";
+
+/**
+ * Resolve the effective mode for the NEXT connect:
+ *  - the persisted user choice (Settings toggle) wins,
+ *  - then an explicit env override (NEXT_PUBLIC_ZKLOGIN_MODE),
+ *  - otherwise "auto" (real when a Google client + redirect are configured, else demo).
+ */
+export function getZkLoginModeChoice(): ZkLoginModeChoice {
+  try {
+    const stored = localStorage.getItem(MODE_KEY);
+    if (stored === "demo" || stored === "real") return stored;
+  } catch {
+    /* private mode / SSR — default */
+  }
+  const env = process.env.NEXT_PUBLIC_ZKLOGIN_MODE;
+  if (env === "demo" || env === "real") return env;
+  return "auto";
+}
+
+/** Persist the user's zkLogin mode choice (Settings → zkLogin toggle). */
+export function setZkLoginModeChoice(mode: ZkLoginModeChoice): void {
+  try {
+    if (mode === "auto") localStorage.removeItem(MODE_KEY);
+    else localStorage.setItem(MODE_KEY, mode);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Resolve which login mode to use for the next connect. */
 export function resolveZkLoginMode(): ZkLoginMode {
+  const choice = getZkLoginModeChoice();
+  if (choice === "demo") return "demo";
+  if (choice === "real") return "real";
   return ZKLOGIN_CONFIG.enabled ? "real" : "demo";
 }

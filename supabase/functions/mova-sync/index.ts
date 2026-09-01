@@ -24,16 +24,57 @@ const DEMO_OWNER_FALLBACK_UUID = "00000000-0000-0000-0000-000000000001";
 /** Return a deterministic user id for a wallet address (FK anchor). */
 function demoUserId(walletAddress: string | null | undefined): string {
   if (!walletAddress) return DEMO_OWNER_FALLBACK_UUID;
-  // Keep the function dependency-free: the SQL helper is preferred, but this
-  // gives a stable id even before 0002 is applied (matching its FNV-1a).
+  // Deterministic FNV-1a 64-bit over `mova:<wallet>` → two 64-bit lanes →
+  // uuid v4-style. Bit-identical to the SQL helper `mova_demo_user_id`
+  // (migrations 0002/0003). The previous version emitted a malformed 2-char
+  // 4th group (`…-46f2-83-…`) → "invalid input syntax for type uuid".
   let h = 14695981039346656037n;
-  for (const ch of `mova:${walletAddress}`) {
-    h ^= BigInt(ch.codePointAt(0) ?? 0);
-    h = (h * 1099511628211n) & 0x7fffffffffffffffn;
+  const bytes = new TextEncoder().encode(`mova:${walletAddress}`);
+  for (const byte of bytes) {
+    h ^= BigInt(byte);
+    h = (h * 1099511628211n) & 0xffffffffffffffffn;
   }
-  const hex = h.toString(16).padStart(16, "0");
-  const lo = ((h * 2654435761n) & 0xffffffffn).toString(16).padStart(8, "0");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(12, 15)}-8${hex.slice(15, 16)}-${lo.padEnd(12, "0")}`;
+  const hi = h;
+  const lo = (h * 2654435761n) & 0xffffffffffffffffn;
+  const digits = `${hi.toString(16).padStart(16, "0")}${lo.toString(16).padStart(16, "0")}`;
+  return `${digits.slice(0, 8)}-${digits.slice(8, 12)}-4${digits.slice(12, 15)}-8${digits.slice(15, 18)}-${digits.slice(18, 30)}`;
+}
+
+/**
+ * Extract the bare UUID from a possibly-prefixed domain id
+ * (`pay_<uuid>`, `receipt_pay_<uuid>`, …). The schema's id / FK columns are
+ * `uuid`, so any prefix must be stripped before insert. Returns `null` when
+ * no UUID is present (the caller then decides how to handle it).
+ */
+function uuidOf(value: unknown): string | null {
+  const m = String(value ?? "").match(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+  );
+  return m ? m[0] : null;
+}
+
+/**
+ * Upsert the deterministic demo-owner user row for a wallet address — the FK
+ * anchor that satisfies `user_id NOT NULL` when there is no Auth session.
+ */
+async function ensureDemoUser(
+  supabase: ReturnType<typeof createClient>,
+  walletAddress: string | null,
+): Promise<{ userId: string; error: { message?: string } | null }> {
+  const userId = demoUserId(walletAddress);
+  const { error } = await supabase.from("users").upsert(
+    {
+      id: userId,
+      external_id: walletAddress ?? "demo",
+      email: `${(walletAddress ?? "demo").slice(0, 12)}@demo.mova`,
+      display_name: "MOVA demo wallet",
+      role: "OWNER",
+      status: "ACTIVE",
+      kyc_status: "NOT_STARTED",
+    },
+    { onConflict: "id" },
+  );
+  return { userId, error: (error as { message?: string } | null) ?? null };
 }
 
 Deno.serve(async (req) => {
@@ -78,41 +119,34 @@ Deno.serve(async (req) => {
       if (!item || typeof item !== "object") return json({ error: "item required" }, 400);
 
       if (kind === "intent") {
-        const userId = demoUserId(item.walletAddress as string | null);
-        const { error: userErr } = await supabase.from("users").upsert(
-          {
-            id: userId,
-            external_id: (item.walletAddress as string) ?? "demo",
-            email: `${((item.walletAddress as string) ?? "demo").slice(0, 12)}@demo.mova`,
-            display_name: "MOVA demo wallet",
-            role: "OWNER",
-            status: "ACTIVE",
-            kyc_status: "NOT_STARTED",
-          },
-          { onConflict: "id" },
+        const { userId, error: userErr } = await ensureDemoUser(
+          supabase,
+          item.walletAddress as string | null,
         );
         if (userErr) return json({ error: `user upsert: ${userErr.message}` }, 500);
 
+        const intentRow: Record<string, unknown> = {
+          id: uuidOf(item.id) ?? (item.id as string),
+          correlation_id: item.correlationId as string,
+          intent_ref: (item.intentRef as string) ?? `PAY-${String(item.correlationId).slice(0, 8)}`,
+          user_id: userId,
+          wallet_id: null,
+          source: (item.source as string) ?? "CHAT",
+          raw_text: (item.rawText as string) ?? "",
+          network: (item.network as string) ?? "SUI_TESTNET",
+          status: (item.status as string) ?? "CREATED",
+          failure_code: (item.failureCode as string) ?? null,
+          created_at: (item.createdAt as string) ?? new Date().toISOString(),
+          updated_at: (item.updatedAt as string) ?? new Date().toISOString(),
+        };
+        // `meta` is an optional denormalized snapshot (migration 0002) — only
+        // send it when provided, so intent sync works with 0001 applied alone.
+        if (item.meta !== undefined && item.meta !== null) {
+          intentRow.meta = item.meta as Record<string, unknown>;
+        }
         const { data, error } = await supabase
           .from("payment_intents")
-          .upsert(
-            {
-              id: item.id as string,
-              correlation_id: item.correlationId as string,
-              intent_ref: (item.intentRef as string) ?? `PAY-${String(item.correlationId).slice(0, 8)}`,
-              user_id: userId,
-              wallet_id: null,
-              source: (item.source as string) ?? "CHAT",
-              raw_text: (item.rawText as string) ?? "",
-              network: (item.network as string) ?? "SUI_TESTNET",
-              status: (item.status as string) ?? "CREATED",
-              failure_code: (item.failureCode as string) ?? null,
-              meta: (item.meta as Record<string, unknown>) ?? {},
-              created_at: (item.createdAt as string) ?? new Date().toISOString(),
-              updated_at: (item.updatedAt as string) ?? new Date().toISOString(),
-            },
-            { onConflict: "id" },
-          );
+          .upsert(intentRow, { onConflict: "id" });
         if (error) return json({ error: error.message }, 500);
         return json({ written: data ? 1 : 1 });
       }
@@ -136,9 +170,44 @@ Deno.serve(async (req) => {
       }
 
       if (kind === "receipt") {
+        // The receipts.payment_intent_id FK requires a parent payment_intents
+        // row. The normal intent sync usually creates it first; when it has
+        // not (legacy records, transient intent failures, ordering), backfill
+        // a minimal SETTLED parent so the receipt is never blocked. The
+        // `intents_state_guard` trigger only fires on UPDATE, and
+        // ignoreDuplicates keeps an existing richer intent untouched.
+        const parentId = uuidOf(item.paymentIntentId);
+        if (parentId) {
+          const { userId, error: userErr } = await ensureDemoUser(
+            supabase,
+            item.ownerAddress as string | null,
+          );
+          if (userErr) return json({ error: `user upsert: ${userErr.message}` }, 500);
+          const parentRow: Record<string, unknown> = {
+            id: parentId,
+            correlation_id: uuidOf(item.correlationId) ?? parentId,
+            intent_ref: `RC-${parentId.slice(0, 12)}`,
+            user_id: userId,
+            wallet_id: null,
+            source: "CHAT",
+            raw_text: "Receipt backfill (issued after SETTLED)",
+            network: (item.network as string) ?? "SUI_TESTNET",
+            status: "SETTLED",
+            failure_code: null,
+            created_at: (item.issuedAt as string) ?? new Date().toISOString(),
+            updated_at: (item.issuedAt as string) ?? new Date().toISOString(),
+          };
+          const { error: parentErr } = await supabase
+            .from("payment_intents")
+            .upsert(parentRow, { onConflict: "id", ignoreDuplicates: true });
+          if (parentErr) {
+            return json({ error: `receipt parent upsert: ${parentErr.message}` }, 500);
+          }
+        }
+
         const { data, error } = await supabase.from("receipts").insert({
-          id: item.id as string,
-          payment_intent_id: (item.paymentIntentId as string) ?? null,
+          id: uuidOf(item.id) ?? (item.id as string),
+          payment_intent_id: parentId,
           owner_address: (item.ownerAddress as string) ?? "",
           amount_asset: (item.amountAsset as string) ?? "",
           amount_amount: (item.amountAmount as string) ?? "",
