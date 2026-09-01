@@ -30,6 +30,8 @@
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "jsqr": "^1.4.0",
+    "lucide": "^1.38.0",
+    "morphicons": "^1.7.1",
     "next": "^15.1.6",
     "qrcode": "^1.5.4",
     "react": "^19.0.0",

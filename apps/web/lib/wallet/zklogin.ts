@@ -29,6 +29,7 @@ import {
   type ZkLoginSession,
 } from "@mova/wallet";
 import { MovaError, ErrorCode } from "@mova/logger";
+import { dappNetworkRpcUrl, EXPECTED_NETWORK } from "./networks";
 
 /** Env-gated zkLogin configuration (no secrets; client id is public). */
 export const ZKLOGIN_CONFIG = {
@@ -69,6 +70,38 @@ export function createEphemeralKeypair(): Ed25519Keypair {
 }
 
 /**
+ * Read the CURRENT Sui epoch from the network RPC and add a validity buffer.
+ * The zkLogin nonce + proof are bound to this epoch window; the proving
+ * service and the chain expect a real Sui epoch, not an arbitrary clock value.
+ *
+ * Uses the gRPC client (the public fullnodes deprecated JSON-RPC; the app's
+ * dApp-kit already talks to the same endpoint over gRPC-Web).
+ */
+async function currentEpochWithBuffer(buffer: number): Promise<number> {
+  const dappNet =
+    EXPECTED_NETWORK === "SUI_DEVNET"
+      ? "devnet"
+      : EXPECTED_NETWORK === "SUI_MAINNET"
+        ? "mainnet"
+        : "testnet";
+  const { SuiGrpcClient } = await import("@mysten/sui/grpc");
+  const client = new SuiGrpcClient({
+    network: dappNet,
+    baseUrl: dappNetworkRpcUrl(dappNet),
+  });
+  const state = await client.getCurrentSystemState();
+  const raw = (state as unknown as { systemState?: { epoch?: string } }).systemState;
+  const epoch = raw && raw.epoch !== undefined ? Number(raw.epoch) : Number.NaN;
+  if (!Number.isFinite(epoch)) {
+    throw new MovaError(
+      ErrorCode.WALLET_CONNECTION_FAILED,
+      "Sui RPC did not return the current epoch.",
+    );
+  }
+  return epoch + buffer;
+}
+
+/**
  * Demo login — offline, deterministic per email. Returns a session with a
  * REAL zkLogin-derived address and `simulated: true`.
  */
@@ -89,8 +122,18 @@ export async function loginZkLoginReal(): Promise<ZkLoginSession> {
     );
   }
   const keypair = createEphemeralKeypair();
-  const maxEpoch = Math.floor(Date.now() / 1000 / 3600) + 100;
-  const jwt = await fetchGoogleIdToken(keypair, maxEpoch);
+  // ONE randomness drives BOTH the OAuth nonce (sent to Google) and the proof
+  // request (`jwtRandomness`). The proving service recomputes the expected
+  // nonce from (extendedEphemeralPublicKey, maxEpoch, jwtRandomness) and
+  // compares it to the JWT's `nonce` claim — they MUST be the same value or
+  // the prover returns 400.
+  const { generateRandomness } = await import("@mysten/sui/zklogin");
+  const jwtRandomness = generateRandomness();
+  // Bound the proof to the REAL current Sui epoch + a validity buffer (the
+  // hours-since-epoch value the code used before is not a Sui epoch and is
+  // rejected by the proving service).
+  const maxEpoch = await currentEpochWithBuffer(100);
+  const jwt = await fetchGoogleIdToken(keypair, maxEpoch, jwtRandomness);
   const claims = parseZkLoginJwt(jwt);
   const userSalt = loadOrCreateUserSalt(claims.sub);
   const address = deriveZkLoginAddress({
@@ -99,7 +142,7 @@ export async function loginZkLoginReal(): Promise<ZkLoginSession> {
     aud: claims.aud,
     userSalt,
   });
-  const inputs = await fetchZkProof({ jwt, keypair, maxEpoch, claims, userSalt });
+  const inputs = await fetchZkProof({ jwt, keypair, maxEpoch, claims, userSalt, jwtRandomness });
   return {
     address,
     ephemeralPublicKey: (await import("@mysten/sui/zklogin")).getExtendedEphemeralPublicKey(keypair.getPublicKey()),
@@ -120,9 +163,13 @@ export async function loginZkLoginReal(): Promise<ZkLoginSession> {
 }
 
 /** Open the Google OAuth popup and wait for the `id_token` to come back. */
-async function fetchGoogleIdToken(keypair: Ed25519Keypair, maxEpoch: number): Promise<string> {
-  const { generateNonce, generateRandomness } = await import("@mysten/sui/zklogin");
-  const nonce = generateNonce(keypair.getPublicKey(), maxEpoch, generateRandomness());
+async function fetchGoogleIdToken(
+  keypair: Ed25519Keypair,
+  maxEpoch: number,
+  jwtRandomness: string,
+): Promise<string> {
+  const { generateNonce } = await import("@mysten/sui/zklogin");
+  const nonce = generateNonce(keypair.getPublicKey(), maxEpoch, jwtRandomness);
   const params = new URLSearchParams({
     client_id: ZKLOGIN_CONFIG.googleClientId,
     redirect_uri: ZKLOGIN_CONFIG.redirectUri,
@@ -168,15 +215,16 @@ async function fetchZkProof(opts: {
   maxEpoch: number;
   claims: ZkLoginClaims;
   userSalt: string;
+  /** The SAME randomness used to build the OAuth nonce (must match). */
+  jwtRandomness: string;
 }): Promise<{
   proofPoints: { a: string[]; b: string[][]; c: string[] };
   headerBase64: string;
   addressSeed: string;
 }> {
   const { genAddressSeed, getExtendedEphemeralPublicKey } = await import("@mysten/sui/zklogin");
-  const { jwt, keypair, maxEpoch, claims, userSalt } = opts;
+  const { jwt, keypair, maxEpoch, claims, userSalt, jwtRandomness } = opts;
   const extendedEphemeralPublicKey = getExtendedEphemeralPublicKey(keypair.getPublicKey());
-  const jwtRandomness = crypto.randomUUID().replace(/-/g, "").slice(0, 24);
   const addressSeed = genAddressSeed(userSalt, "sub", claims.sub, claims.aud).toString();
 
   const body = {

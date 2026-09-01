@@ -9,6 +9,8 @@
  * state and mirrored to `aria-selected` for a11y.
  */
 import { useState } from "react";
+import { MorphIcon } from "morphicons/react";
+import { MessageCircle, QrCode } from "lucide"; // data, not components
 import { ChatPaymentInterface } from "./ChatPaymentInterface";
 import { QrScanInterface } from "./QrScanInterface";
 
@@ -29,7 +31,9 @@ export function PaymentInputTabs() {
           id="tab-chat"
           active={tab === "chat"}
           onClick={() => setTab("chat")}
-          icon="M8 10h8M8 14h5M9 6l-4 2 4 2"
+          icon={
+            <MorphIcon icon={MessageCircle} size={16} strokeWidth={2} spring="snappy" reducedMotion="user" />
+          }
         >
           Chat
         </TabButton>
@@ -37,7 +41,9 @@ export function PaymentInputTabs() {
           id="tab-qr"
           active={tab === "qr"}
           onClick={() => setTab("qr")}
-          icon="M3.5 9.5V6.5c0-1.7 1.3-3 3-3h3M14.5 3.5h3c1.7 0 3 1.3 3 3v3M20.5 14.5v3c0 1.7-1.3 3-3 3h-3M9.5 20.5h-3c-1.7 0-3-1.3-3-3v-3"
+          icon={
+            <MorphIcon icon={QrCode} size={16} strokeWidth={2} spring="snappy" reducedMotion="user" />
+          }
         >
           QR / Scan
         </TabButton>
@@ -65,7 +71,7 @@ function TabButton({
   id: string;
   active: boolean;
   onClick: () => void;
-  icon: string;
+  icon: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -80,18 +86,7 @@ function TabButton({
         active ? "bg-surface-2 text-ink shadow-sm" : "text-muted hover:text-ink"
       }`}
     >
-      <svg
-        className="h-4 w-4"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <path d={icon} />
-      </svg>
+      {icon}
       {children}
     </button>
   );
