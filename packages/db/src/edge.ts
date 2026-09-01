@@ -10,7 +10,7 @@
  *
  * `fetchImpl` is injectable so tests can run offline against a stub.
  */
-import type { MovaAuditSync, MovaIntentSync, MovaReceiptSync, MovaSyncItem, SyncResult } from "./types.js";
+import type { MovaAuditSync, MovaHistory, MovaIntentSync, MovaReceiptSync, MovaSyncItem, SyncResult } from "./types.js";
 
 export interface MovaEdgeClientOptions {
   /** Supabase project URL, e.g. https://abc.supabase.co. */
@@ -104,6 +104,28 @@ export class MovaEdgeClient {
     if (!res.ok) return [];
     const data = (await res.json().catch(() => ({ items: [] }))) as { items: Array<Record<string, unknown>> };
     return data.items ?? [];
+  }
+
+  /** Read the full persisted history (intents + receipts + audit) for the demo. */
+  async listHistory(): Promise<MovaHistory> {
+    const url = `${this.endpoint}?kind=history`;
+    let res: Response;
+    try {
+      res = await this.fetchImpl(url, {
+        headers: this.options.anonKey
+          ? { apikey: this.options.anonKey, authorization: `Bearer ${this.options.anonKey}` }
+          : {},
+      });
+    } catch {
+      return { intents: [], receipts: [], audit: [] };
+    }
+    if (!res.ok) return { intents: [], receipts: [], audit: [] };
+    const data = (await res.json().catch(() => null)) as MovaHistory | null;
+    return {
+      intents: data?.intents ?? [],
+      receipts: data?.receipts ?? [],
+      audit: data?.audit ?? [],
+    };
   }
 }
 

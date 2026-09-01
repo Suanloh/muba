@@ -41,6 +41,10 @@ export function recordToIntentSync(record: PaymentRecord): MovaIntentSync {
     status: record.state,
     failureCode,
     walletAddress: record.ownerAddress,
+    // Full record snapshot — lets the Activity view round-trip every payment
+    // back out of the DB (amount / recipient / settlement / …) without
+    // re-parsing raw text.
+    meta: record as unknown as Record<string, unknown>,
     createdAt: new Date(record.createdAt).toISOString(),
     updatedAt: new Date(record.updatedAt).toISOString(),
   };

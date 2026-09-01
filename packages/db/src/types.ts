@@ -58,6 +58,17 @@ export interface MovaReceiptSync {
 
 export type MovaSyncItem = MovaIntentSync | MovaAuditSync | MovaReceiptSync;
 
+/**
+ * Full persisted history returned by the Edge Function's read path
+ * (`GET ?kind=history`). Raw Supabase rows — the web layer maps them back into
+ * `PaymentRecord` / `PaymentReceipt` / `AuditEvent` domain objects.
+ */
+export interface MovaHistory {
+  intents: Array<Record<string, unknown>>;
+  receipts: Array<Record<string, unknown>>;
+  audit: Array<Record<string, unknown>>;
+}
+
 /** Result of one sync attempt — honest about offline/errors. */
 export interface SyncResult {
   ok: boolean;
