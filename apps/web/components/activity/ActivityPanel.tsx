@@ -41,12 +41,22 @@ function dayLabel(ts: number): string {
 }
 
 export function ActivityPanel() {
-  const { records, receipts, plans, privacyHidden, setView } = useAppStore();
+  const { records, receipts, plans, privacyHidden, setView, supabase, refreshHistory } = useAppStore();
   const { appNetwork } = useMovaWallet();
   const [status, setStatus] = useState<StatusFilter>("all");
   const [kind, setKind] = useState<KindFilter>("all");
   const [search, setSearch] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await refreshHistory();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -117,10 +127,19 @@ export function ActivityPanel() {
     return (
       <Card title="Activity" subtitle="Records & receipts owned by your address.">
         <div className="flex flex-col items-center gap-3 py-6 text-center">
-          <p className="text-sm text-muted">No transactions yet.</p>
-          <Button variant="primary" onClick={() => setView("home")}>
-            Make a payment
-          </Button>
+          {!supabase.historyLoaded ? (
+            <>
+              <p className="text-sm text-muted">Loading history from the data layer…</p>
+              <span className="mova-pulse inline-block h-2 w-2 rounded-full bg-signal-text" aria-hidden="true" />
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted">No transactions yet.</p>
+              <Button variant="primary" onClick={() => setView("home")}>
+                Make a payment
+              </Button>
+            </>
+          )}
         </div>
       </Card>
     );
@@ -146,6 +165,16 @@ export function ActivityPanel() {
             kindChip(v, v),
           )}
         </div>
+        <Button
+          variant="ghost"
+          className="gap-1.5 text-xs"
+          onClick={() => void refresh()}
+          disabled={refreshing}
+          title="Reload history from the data layer"
+        >
+          <RefreshIcon />
+          {refreshing ? "Refreshing…" : "Refresh"}
+        </Button>
         <input
           type="search"
           value={search}
@@ -273,5 +302,24 @@ export function ActivityPanel() {
         </div>
       )}
     </Card>
+  );
+}
+
+function RefreshIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+      <path d="M21 3v6h-6" />
+    </svg>
   );
 }

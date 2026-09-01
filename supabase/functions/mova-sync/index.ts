@@ -108,6 +108,50 @@ Deno.serve(async (req) => {
         if (error) return json({ error: error.message }, 500);
         return json({ items: data ?? [] });
       }
+      if (kind === "history") {
+        // Full persisted history for the Activity view. The demo has no Auth
+        // session, so the read is scoped server-side by the service role —
+        // return intents (with their owner address resolved from `users`),
+        // receipts and the append-only audit trail so past sessions render.
+        const [intentsRes, receiptsRes, auditRes, usersRes] = await Promise.all([
+          supabase
+            .from("payment_intents")
+            .select("*")
+            .order("created_at", { ascending: false })
+            .limit(500),
+          supabase
+            .from("receipts")
+            .select("*")
+            .order("issued_at", { ascending: false })
+            .limit(500),
+          supabase
+            .from("audit_events")
+            .select("*")
+            .order("created_at", { ascending: true })
+            .limit(2000),
+          supabase.from("users").select("id, external_id"),
+        ]);
+        if (intentsRes.error) return json({ error: intentsRes.error.message }, 500);
+        if (receiptsRes.error) return json({ error: receiptsRes.error.message }, 500);
+        if (auditRes.error) return json({ error: auditRes.error.message }, 500);
+
+        const ownerById = new Map<string, string>();
+        for (const u of usersRes.data ?? []) {
+          if (u && typeof u.external_id === "string") {
+            ownerById.set(String(u.id), u.external_id);
+          }
+        }
+        const intents = (intentsRes.data ?? []).map((row) => ({
+          ...row,
+          owner_address: ownerById.get(String(row.user_id)) ?? null,
+        }));
+
+        return json({
+          intents,
+          receipts: receiptsRes.data ?? [],
+          audit: auditRes.data ?? [],
+        });
+      }
       return json({ error: `unknown kind '${kind}'` }, 400);
     }
 
@@ -147,6 +191,17 @@ Deno.serve(async (req) => {
         const { data, error } = await supabase
           .from("payment_intents")
           .upsert(intentRow, { onConflict: "id" });
+        // `meta` only exists once migration 0002/0003 has added the column —
+        // if the column is missing (schema drift), retry without it so intent
+        // sync still succeeds rather than breaking the whole write.
+        if (error && intentRow.meta !== undefined && /meta/i.test(error.message)) {
+          delete intentRow.meta;
+          const retry = await supabase
+            .from("payment_intents")
+            .upsert(intentRow, { onConflict: "id" });
+          if (retry.error) return json({ error: retry.error.message }, 500);
+          return json({ written: retry.data ? 1 : 1 });
+        }
         if (error) return json({ error: error.message }, 500);
         return json({ written: data ? 1 : 1 });
       }

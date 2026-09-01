@@ -16,6 +16,7 @@ import { OfflineMovaDb } from "./offline.js";
 import { subscribeToIntentStatus } from "./realtime.js";
 import type {
   MovaAuditSync,
+  MovaHistory,
   MovaIntentSync,
   MovaReceiptSync,
   RealtimeStatusChange,
@@ -40,6 +41,8 @@ export interface MovaDb {
   syncAudit(event: MovaAuditSync): Promise<SyncResult>;
   syncReceipt(receipt: MovaReceiptSync): Promise<SyncResult>;
   listAudit(correlationId: string): Promise<Array<Record<string, unknown>>>;
+  /** Read the full persisted history (intents + receipts + audit). */
+  listHistory(): Promise<MovaHistory>;
   /** Probe the Edge Function — true when reachable + deployed. */
   ping(): Promise<boolean>;
   subscribeToStatus(onStatus: (change: RealtimeStatusChange) => void): () => void;
@@ -101,6 +104,14 @@ export function createMovaDb(options: MovaDbOptions = {}): MovaDb {
         return await edge.listAudit(correlationId);
       } catch {
         return [];
+      }
+    },
+
+    async listHistory(): Promise<MovaHistory> {
+      try {
+        return await edge.listHistory();
+      } catch {
+        return { intents: [], receipts: [], audit: [] };
       }
     },
 
