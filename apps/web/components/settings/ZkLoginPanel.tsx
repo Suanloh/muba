@@ -20,12 +20,20 @@ import {
   getActiveZkLoginSession,
   subscribeZkLoginSession,
 } from "@/lib/wallet/zklogin-wallet";
-import { loginZkLoginDemo } from "@/lib/wallet/zklogin";
+import {
+  loginZkLoginDemo,
+  getZkLoginModeChoice,
+  setZkLoginModeChoice,
+  resolveZkLoginMode,
+  type ZkLoginModeChoice,
+} from "@/lib/wallet/zklogin";
 import { Badge, Button, Card, Code } from "../ui";
 
 export function ZkLoginPanel() {
   const [session, setSession] = useState<ZkLoginSession | null>(() => getActiveZkLoginSession());
   const [preview, setPreview] = useState<ZkLoginSession | null>(null);
+  const [mode, setMode] = useState<ZkLoginModeChoice>(() => getZkLoginModeChoice());
+  const [resolved, setResolved] = useState(() => resolveZkLoginMode());
 
   useEffect(() => {
     const unsubscribe = subscribeZkLoginSession((s) => {
@@ -36,6 +44,12 @@ export function ZkLoginPanel() {
     return unsubscribe;
   }, []);
 
+  const changeMode = (m: ZkLoginModeChoice) => {
+    setZkLoginModeChoice(m);
+    setMode(m);
+    setResolved(resolveZkLoginMode());
+  };
+
   const active = session;
   const shown = active ?? preview;
 
@@ -44,6 +58,37 @@ export function ZkLoginPanel() {
       title="Sui zkLogin"
       subtitle="Sign in with Google — a Sui address derived from your OAuth identity, no private key."
     >
+      {/* Mode toggle — demo works offline (real address, simulated proof); real
+          needs Google OAuth + a proving service that supports your client ID. */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-hairline bg-surface-2 p-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+            zkLogin mode
+          </p>
+          <p className="mt-0.5 text-[11px] leading-relaxed text-faint">
+            {resolved === "demo"
+              ? "Offline demo — real zkLogin address, simulated proof, no proving service needed."
+              : resolved === "real"
+                ? "Real Google OAuth — requires a proving service that supports your client ID."
+                : "Auto — uses real when a Google client + redirect are configured, else demo."}
+          </p>
+        </div>
+        <div className="inline-flex shrink-0 rounded-full border border-hairline bg-surface p-0.5">
+          {(["auto", "demo", "real"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => changeMode(m)}
+              className={`rounded-full px-3 py-1 text-xs font-medium capitalize transition ${
+                mode === m ? "bg-signal text-white" : "text-muted hover:text-ink"
+              }`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {!active && (
         <div className="space-y-3 text-sm">
           <p className="text-xs text-muted">
