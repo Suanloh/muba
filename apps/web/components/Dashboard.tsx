@@ -1,11 +1,6 @@
 "use client";
 import { PaymentInputTabs } from "./PaymentInputTabs";
-import { LiveRunPanel } from "./LiveRunPanel";
-import { TransactionStatusCard } from "./TransactionStatusCard";
-import { PaymentPreviewPanel } from "./PaymentPreviewPanel";
-import { PaymentExplanationPanel } from "./PaymentExplanationPanel";
-import { RiskAssessmentPanel } from "./RiskAssessmentPanel";
-import { ApprovalPanel } from "./ApprovalPanel";
+import { LivePaymentFlow } from "./LivePaymentFlow";
 import { SafetyBoundaryCard } from "./SafetyBoundaryCard";
 import { AuditTrailPanel } from "./AuditTrailPanel";
 import { NotificationsPanel } from "./NotificationsPanel";
@@ -70,23 +65,17 @@ function HomeView() {
         <PaymentInputTabs />
       </Stage>
 
-      {/* Live run — rendered in the main column, directly below the chat/QR payment input. */}
-      <LiveRunPanel />
-
+      {/* Unified live payment flow — phases collapse to one line, tap to
+          expand; the live-run log is kept below. Audit trail, notifications
+          and the safety boundary are NOT part of the flow — they live only
+          in Activity. */}
       <Stage
         n={2}
-        title="Review the plan"
-        hint="txn → risk & hedging → explanation → preview — every decision explained"
+        title="Live payment flow"
+        hint="parse → route → compliance → risk & hedge → approval → settle"
         id="plan-review"
       >
-        <TransactionStatusCard />
-        <RiskAssessmentPanel />
-        <PaymentExplanationPanel />
-        <PaymentPreviewPanel />
-      </Stage>
-
-      <Stage n={3} title="Approve & settle" hint="only a human can authorize the wallet">
-        <ApprovalPanel />
+        <LivePaymentFlow />
       </Stage>
     </div>
   );

@@ -98,10 +98,17 @@ interface AppStoreValue {
   plans: Record<string, PaymentPlan>;
   /** recordId -> the user acknowledged the preview ("I understand"). */
   acknowledged: Record<string, boolean>;
+  /**
+   * recordId -> user's hedge preference while making the payment. Overrides
+   * the deterministic recommendation: "HEDGE" (use the hedge) or "NO_HEDGE"
+   * (skip it). Absent = follow the engine's recommendation.
+   */
+  hedgeChoice: Record<string, "HEDGE" | "NO_HEDGE">;
   /** recordId -> MemWal (Walrus memory) store result for a settled payment. */
   memWal: Record<string, MemWalStoreResult>;
   setActiveRecordId: (id: string | null) => void;
   setAcknowledged: (recordId: string, value: boolean) => void;
+  setHedgeChoice: (recordId: string, choice: "HEDGE" | "NO_HEDGE") => void;
   submitIntent: (rawText: string) => Promise<PaymentRecord>;
   approve: (recordId: string) => Promise<PaymentRecord>;
   reject: (recordId: string) => Promise<PaymentRecord>;
@@ -151,6 +158,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const [riskViews, setRiskViews] = useState<Record<string, RiskView>>({});
   const [plans, setPlans] = useState<Record<string, PaymentPlan>>({});
   const [acknowledged, setAcknowledgedState] = useState<Record<string, boolean>>({});
+  const [hedgeChoice, setHedgeChoiceState] = useState<Record<string, "HEDGE" | "NO_HEDGE">>({});
   const [memWal, setMemWal] = useState<Record<string, MemWalStoreResult>>({});
   // UI prefs. Persisted; read after mount to avoid SSR hydration mismatch.
   const [soundEnabled, setSoundEnabledState] = useState(true);
@@ -324,6 +332,10 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
 
   const setAcknowledged = useCallback((recordId: string, value: boolean) => {
     setAcknowledgedState((prev) => ({ ...prev, [recordId]: value }));
+  }, []);
+
+  const setHedgeChoice = useCallback((recordId: string, choice: "HEDGE" | "NO_HEDGE") => {
+    setHedgeChoiceState((prev) => ({ ...prev, [recordId]: choice }));
   }, []);
 
   const submitIntent = useCallback(
@@ -713,6 +725,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     setRiskViews({});
     setPlans({});
     setAcknowledgedState({});
+    setHedgeChoiceState({});
     setMemWal({});
     setActiveRecordId(null);
     setPlanRunState({ recordId: null, status: "idle", entries: [] });
@@ -735,9 +748,11 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       riskViews,
       plans,
       acknowledged,
+      hedgeChoice,
       memWal,
       setActiveRecordId,
       setAcknowledged,
+      setHedgeChoice,
       submitIntent,
       approve,
       reject,
@@ -767,9 +782,11 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       riskViews,
       plans,
       acknowledged,
+      hedgeChoice,
       memWal,
       setActiveRecordId,
       setAcknowledged,
+      setHedgeChoice,
       submitIntent,
       approve,
       reject,

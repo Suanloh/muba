@@ -12,8 +12,9 @@
 import { useMemo, useState } from "react";
 import { buildAuditTrail } from "@mova/core";
 import { PAYMENT_AUDIT_STAGES, type PaymentAuditEntry } from "@mova/types";
+import type { PaymentRecord } from "@mova/wallet";
 import { useAppStore } from "@/lib/store/app-store";
-import { formatDateTime, shortId } from "@/lib/pipeline/format";
+import { formatDateTime, formatMoney, shortId } from "@/lib/pipeline/format";
 import { downloadAuditPdf, type AuditReportData } from "@/lib/reports/pdf-report";
 import { Badge, Button, Card } from "./ui";
 
@@ -40,7 +41,15 @@ export function AuditTrailPanel() {
   // Hidden by default — revealed only when the user requests an audit report.
   const [requested, setRequested] = useState(false);
   const [exported, setExported] = useState<"json" | "pdf" | null>(null);
-  const record = records.find((r) => r.id === activeRecordId) ?? records[0] ?? null;
+  /**
+   * Which payment the report is generated for. Defaults to the active record
+   * (or the most recent); the user can pick ANY payment from history.
+   */
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const record =
+    records.find((r) => r.id === (selectedId ?? activeRecordId)) ??
+    records[0] ??
+    null;
 
   const trail = useMemo(
     () => (record ? buildAuditTrail(audit, record.correlationId) : null),
@@ -121,7 +130,8 @@ export function AuditTrailPanel() {
   if (!requested) {
     return (
       <Card title="Audit trail" subtitle="Immutable decision log — hidden until you request it">
-        <div className="flex flex-wrap items-center gap-2">
+        <PaymentPicker records={records} selectedId={selectedId} onChange={setSelectedId} />
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <span className="font-mono text-xs text-slate-500">{shortId(record.id)}</span>
           <Badge tone={trail.terminal ? (record.state === "SETTLED" ? "green" : "red") : "blue"}>
             {trail.currentState ?? record.state}
@@ -157,7 +167,8 @@ export function AuditTrailPanel() {
       }
     >
       {/* Report toolbar */}
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+      <PaymentPicker records={records} selectedId={selectedId} onChange={setSelectedId} />
+      <div className="mt-3 mb-3 flex flex-wrap items-center gap-2">
         <Button variant="secondary" className="gap-2 text-xs" onClick={exportJson}>
           <DownloadIcon /> Export (.json)
         </Button>
@@ -198,6 +209,37 @@ function FileIcon() {
       <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M14 3v5h5M9 13h6M9 17h6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+/**
+ * Which payment to generate the report for. Defaults to the active record; the
+ * user can switch to any payment in history (requirement: report per payment).
+ */
+function PaymentPicker({
+  records,
+  selectedId,
+  onChange,
+}: {
+  records: PaymentRecord[];
+  selectedId: string | null;
+  onChange: (id: string) => void;
+}) {
+  return (
+    <label className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+      <span className="font-medium uppercase tracking-wide">Report for</span>
+      <select
+        value={selectedId ?? records[0]?.id ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        className="max-w-full rounded-md border border-slate-200 bg-surface px-2 py-1 font-mono text-xs text-slate-700 focus:border-sky-500 focus:outline-none"
+      >
+        {records.map((r) => (
+          <option key={r.id} value={r.id}>
+            {shortId(r.id)} · {formatMoney(r.amount)} → {r.recipient.value.slice(0, 10)}… · {r.state}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
