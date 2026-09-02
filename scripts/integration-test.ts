@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+/// <reference types="node" />
 /**
  * MOVA — Final Phase integration + failure + AI-safety test harness.
  *
@@ -264,7 +265,7 @@ async function sectionA(): Promise<void> {
   for (const evt of ["ROUTE_FOUND", "COMPLIANCE_CHECKED", "RISK_ASSESSED", "HEDGE_DECIDED", "APPROVED", "EXECUTION_STARTED", "SETTLED"]) {
     expect(trailTypes.includes(evt), `A16 decision logged: ${evt}`);
   }
-  expect(flow.record.execution?.settlement === "SIMULATED", "A17 idempotency state marked executed (simulated status)", flow.record.execution?.settlement);
+  expect(flow.record.execution?.settlement === "SIMULATED", "A17 idempotency state marked executed (simulated status)", flow.record.execution?.settlement ?? "null");
 
   // 9. Execution built only from validated structured data (spec integrity)
   const rebuilt = await import("@mova/core").then((m) => m.assertSpecIntegrity(plan.spec));
@@ -435,7 +436,7 @@ async function sectionC(): Promise<void> {
   // C8 — External API failure (price feed down) → engine fails closed, no approval
   {
     const downMarket: MarketDataProvider = {
-      descriptor: { kind: "EXTERNAL", name: "LIVE_PRICE_FEED", network: null },
+      descriptor: { kind: "REAL", name: "LIVE_PRICE_FEED", network: null },
       getQuote: async () => {
         throw new MovaError(ErrorCode.INTEGRATION_UNAVAILABLE, "price feed unreachable");
       },
@@ -487,7 +488,7 @@ async function sectionC(): Promise<void> {
   // C9 — Thetanuts unavailable → hedge reports UNAVAILABLE, no fake live data
   {
     const downHedge: HedgingProvider = {
-      descriptor: { kind: "EXTERNAL", name: "THETANUTS_V4", network: null },
+      descriptor: { kind: "REAL", name: "THETANUTS_V4", network: null },
       quote: async () => {
         throw new MovaError(ErrorCode.INTEGRATION_UNAVAILABLE, "Thetanuts optionbook unreachable");
       },
