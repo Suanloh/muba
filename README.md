@@ -17,11 +17,13 @@
 
 Web3 payment infrastructure suffers from three critical inefficiencies:
 
-- **Capital inefficiency:** assets locked in yield protocols or sitting idle can't easily move for real-world payments.
-- **Operational friction:** manual steps (cross-chain transfers, gas management, token swaps) are slow, costly, and error-prone.
-- **Lack of autonomy:** no systems understand user intent and execute optimal transactions end-to-end.
+| Problem | Description | Impact |
+| :--- | :--- | :--- |
+| **Capital Inefficiency** | Assets locked in yield protocols or sitting idle cannot easily move for real-world payments. | Opportunity cost & restricted liquidity |
+| **Operational Friction** | Manual steps like cross-chain transfers, gas management, and token swaps are slow, costly, and error-prone. | High user barrier & increased transaction costs |
+| **Lack of Autonomy** | No systems currently exist that understand user intent and execute optimal transactions end-to-end. | Rigid UX & manual execution burden |
 
-Today's finance teams spend hours manually executing multi-step transactions. Tomorrow's finance should be natural language.
+> Today's finance teams spend hours manually executing multi-step transactions. Tomorrow's finance should be natural language.
 
 ## 💡 The Solution
 
@@ -35,15 +37,17 @@ User Intent → Parse → Route → Optimize → Comply → Score Risk → Appro
 
 ### 9-Step Payment Lifecycle
 
-1. **Intent Capture** — Natural language ("Pay RM200 to merchant") or EMVCo QR scan
-2. **Intent Parse** — LLM interprets user request → typed `PaymentIntent` (no financial computation)
-3. **Route Discovery** — Find execution paths across liquidity pools and payment rails
-4. **Route Optimization** — Min-max scoring: gas, speed, steps, and risk (fully deterministic, auditable)
-5. **Compliance Check** — Regulatory screening (fail-closed, non-blocking)
-6. **Risk Assessment** — 7-point risk engine: balance, gas, recipient, network, slippage, route, complexity
-7. **Hedge Decision** — Thetanuts-style structured products for FX/VaR exposure
-8. **Human Approval** — Finance manager reviews and signs the exact plan digest
-9. **Settlement & Audit** — Sui blockchain execution; immutable append-only audit trail; receipt + explanation
+| Step | Phase | Function | Key Mechanism |
+| :---: | :--- | :--- | :--- |
+| **1** | **Intent Capture** | Inputs user payload | Natural language (e.g., *"Pay RM200 to merchant"*) or EMVCo QR scan |
+| **2** | **Intent Parse** | Converts request to typed struct | LLM parses request into typed `PaymentIntent` (no financial computation) |
+| **3** | **Route Discovery** | Identifies viable execution paths | Scans liquidity pools and payment rails |
+| **4** | **Route Optimization** | Ranks and selects optimal route | Min-max scoring on gas, speed, steps, and risk (deterministic & auditable) |
+| **5** | **Compliance Check** | Ensures regulatory alignment | Regulatory screening (fail-closed, non-blocking) |
+| **6** | **Risk Assessment** | Evaluates transaction parameters | 7-point risk engine: balance, gas, recipient, network, slippage, route, complexity |
+| **7** | **Hedge Decision** | Manages financial exposure | Thetanuts-style structured products for FX/VaR risk mitigation |
+| **8** | **Human Approval** | Final authorization gate | Finance manager reviews and signs the exact plan digest |
+| **9** | **Settlement & Audit** | Executes transaction & logs data | Sui blockchain execution; immutable append-only audit trail; receipt + explanation |
 
 ## 🚀 Quick Start
 
@@ -120,15 +124,19 @@ MOVA is built on sponsor-provided building blocks. Every external dependency sit
 provider interface in `packages/integrations` with a **deterministic mock** for local/dev use and
 a **real provider** swapped in by config (never by touching core engine code).
 
-| Sponsor / tool | What MOVA uses it for | Notes |
-| --- | --- | --- |
-| **Sui** (`@mysten/sui`, Move) | Settlement network — **Mainnet target**; dev/test use devnet/testnet | `SuiSettlementProvider` builds a PTB from validated params, dry-runs (simulate), signs, submits, and waits for confirmation |
-| **Thetanuts V4 / Optionbook** | On-chain options & structured products for FX/risk hedging | `ThetanutsHedgingProvider` (real V4 quotes) + `StaticThetanutsHedgingProvider` (dev fallback) |
-| **Supabase** | Backend platform — PostgreSQL, Auth, Realtime, Edge Functions (`mova-sync`) | Payments persist + stream in realtime; honest in-memory fallback when unconfigured |
-| **Google Gemini** | Natural-language intent parsing (**proposals only** — never executes) | `@mova/ai` with schema-constrained structured output |
-| **EMVCo QR** | Local merchant-presented QR decoding | `packages/qr` — on-device, no external API, CRC fail-closed |
-| **Next.js + dApp Kit** | Web app shell + wallet layer (`@mysten/dapp-kit-react` v2) | `apps/web` |
-| **QRCode** (`qrcode`) | Renders the real, scannable demo QR | `apps/web` → Pay by QR tab |
+
+
+### Sponsors & Tools
+
+| Sponsor / Tool | Used For | Notes |
+|---|---|---|
+| **Sui** (`@mysten/sui`, Move) | Main settlement network | `SuiSettlementProvider` Builds, simulates, signs & submits PTBs |
+| **Thetanuts V4 / Optionbook** | Options & FX risk hedging | `ThetanutsHedgingProvider` (real V4 quotes) + `StaticThetanutsHedgingProvider` (dev fallback) |
+| **Supabase** | Database, Auth & Realtime | Stores and streams payment data |
+| **Google Gemini** | Intent parsing | Creates structured proposals only |
+| **EMVCo QR** | Merchant QR decoding |  `packages/qr` On-device decoding + CRC validation |
+| **Next.js + dApp Kit** | Web app & wallet | Used in `apps/web` |
+| **QRCode** (`qrcode`) | Payment QR generation | Generates scannable demo QR |
 
 Every provider exposes `descriptor: { kind: "MOCK" | "REAL", name, network }`; the audit trail
 records which implementation produced each result. Migration mock → real is a **provider swap**
