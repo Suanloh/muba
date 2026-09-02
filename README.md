@@ -211,7 +211,7 @@ violated, not a style issue.
 ## Repository layout
 
 ```
-docs/                 Phase 0 blueprint + ownership model (start here)
+docs/                 Blueprint + ownership model (start here)
 packages/types        shared domain models + payment state machine
 packages/config       env schema + dev/testnet/mainnet network configs
 packages/logger       structured logging + error conventions
@@ -219,11 +219,11 @@ packages/core         deterministic engine contracts + state-machine runner + NL
 packages/qr           local EMVCo QR decoder (deterministic, no external call)
 packages/integrations sponsor provider interfaces + deterministic mocks
 packages/wallet       Sui ownership layer: gate, authz, network, provider abstraction
-packages/ai           NL payment parser (Phase 2) — proposal-only, no execution
+packages/ai           NL payment parser — proposal-only, no execution
 apps/web              Next.js wallet-connected app shell + natural-language payment chat
-supabase/             backend platform: Edge Functions, Auth, Realtime, Postgres
-contracts/            Sui Move package — ownership blueprint (mova_owned.move), deploy in Phase 2
-skills/               reusable skill pack (safety + architecture guidance)
+supabase/             Backend platform: Edge Functions, Auth, Realtime, Postgres
+contracts/            Sui Move package — ownership blueprint (mova_owned.move)
+skills/               Reusable skill pack (safety + architecture guidance)
 ```
 
 ## Smart contract
@@ -305,11 +305,77 @@ npx tsx scripts/verify-publish.ts       # verify the published package
 
 ## Development roadmap
 
-- [x] **Phase 0 — Foundation:** docs, types, core, config, logger, integrations, QR.
-- [x] **Phase 1 — Wallet, ownership, app shell:** `@mova/wallet`, ownership model/docs, `contracts/mova`, web shell.
-- [x] **Phase 1b / 2 — Natural-language payments:** parser (`@mova/ai`), intent validation, explicit user confirmation flow.
-- [ ] **Phase 2 — Real Sui settlement completion:** smart-wallet execution package + mainnet boundary validation.
-- [x] **Phase 6 — Risk + hedging recommendation:** deterministic risk/hedge engines and web risk panel.
-- [ ] **Next:** Supabase-backed orchestration, real Thetanuts hedge execution, production hardening, multi-rail expansion.
+- [x] **— Foundation:** docs, types, core, config, logger, integrations, QR.
+- [x] **— Wallet, ownership, app shell:** `@mova/wallet`, ownership model/docs, `contracts/mova`, web shell.
+- [x] **— Natural-language payments:** parser (`@mova/ai`), intent validation, explicit user confirmation flow.
+- [x] **— Risk + hedging recommendation:** deterministic risk/hedge engines and web risk panel.
+- [x] **— Thetanuts V4 / Optionbook** — hedge quotes and executed hedges flowing
+   through the same human-approval gate.
+---
+## Future plan
 
-For detailed milestones and sequencing, see [`docs/roadmap.md`](docs/roadmap.md).
+1. **Core pipeline (Supabase backend)** — finish the `supabase/` Edge Functions +
+   `PaymentOrchestrator`, Postgres migrations with RLS + append-only `audit_events`
+2. **Real Sui settlement completion** — write & publish the Move **smart-wallet
+   execution package** (executor authorization, replay protection, safe token handling, ported
+   from the `SMART_WALLET.md` EVM patterns), add `TOKEN_TRANSFER` payloads to
+   `SuiSettlementProvider`, then validate the `mainnet` boundary against a funded wallet.
+3. **Hardening & production readiness** — real screening/market-data providers,
+   monitoring & alerting, retention, load + failure-injection + audit-integrity tests, and
+   `mainnet` dry-run simulations.
+4. **Beyond** — multi-rail support (onramp / DEX / fiat rail), richer structured products for
+   hedging, and continuous compliance/audit hardening.
+
+# ⚠️ Disclaimer
+
+This project is a **hackathon prototype**.
+
+The smart contracts and payment infrastructure have not been presented as production-grade financial infrastructure or as a substitute for a professional security audit.
+
+Do not use real funds with experimental deployments.
+
+---
+
+# 👥 Team
+
+| Name          | Role      |
+| ------------- | --------- |
+| KONG ZI XUAN  | Developer |
+| -  | Developer |
+| - | Developer |
+
+---
+
+# 📄 License
+
+The smart contracts use the MIT SPDX license.
+
+If the complete repository is intended to be open source, add an appropriate `LICENSE` file to the root of the repository.
+
+---
+
+# Acknowledgements
+
+This project was developed as a hackathon prototype exploring the intersection of:
+
+* Artificial Intelligence
+* Agentic workflows
+* Blockchain
+* Sui
+* Thetanuts V4
+* Web3 payments
+* Smart contracts
+* Intent-based architecture
+* EMVCo QR
+* Monorepo
+
+---
+
+
+
+---
+<p align="center">
+
+**Built with LLM +  Blockchain +  Intent-Based Payments**
+
+</p>
