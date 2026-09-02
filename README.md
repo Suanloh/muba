@@ -93,6 +93,27 @@ its own payment, can't modify an approved spec). See
 | QR | **Local EMVCo decoder** (`packages/qr`, no external call) |
 | Architecture | AI parses/recommends → deterministic engines validate → human approves → wallet executes |
 
+## Sponsor tools, APIs & infrastructure
+
+MOVA is built on sponsor-provided building blocks. Every external dependency sits behind a
+provider interface in `packages/integrations` with a **deterministic mock** for local/dev use and
+a **real provider** swapped in by config (never by touching core engine code).
+
+| Sponsor / tool | What MOVA uses it for | Notes |
+| --- | --- | --- |
+| **Sui** (`@mysten/sui`, Move) | Settlement network — **Mainnet target**; dev/test use devnet/testnet | `SuiSettlementProvider` builds a PTB from validated params, dry-runs (simulate), signs, submits, and waits for confirmation |
+| **Thetanuts V4 / Optionbook** | On-chain options & structured products for FX/risk hedging | `ThetanutsHedgingProvider` (real V4 quotes) + `StaticThetanutsHedgingProvider` (dev fallback) |
+| **Supabase** | Backend platform — PostgreSQL, Auth, Realtime, Edge Functions (`mova-sync`) | Payments persist + stream in realtime; honest in-memory fallback when unconfigured |
+| **Google Gemini** | Natural-language intent parsing (**proposals only** — never executes) | `@mova/ai` with schema-constrained structured output |
+| **EMVCo QR** | Local merchant-presented QR decoding | `packages/qr` — on-device, no external API, CRC fail-closed |
+| **Next.js + dApp Kit** | Web app shell + wallet layer (`@mysten/dapp-kit-react` v2) | `apps/web` |
+| **QRCode** (`qrcode`) | Renders the real, scannable demo QR | `apps/web` → Pay by QR tab |
+
+Every provider exposes `descriptor: { kind: "MOCK" | "REAL", name, network }`; the audit trail
+records which implementation produced each result. Migration mock → real is a **provider swap**
+driven by `SETTLEMENT_MODE`, `MARKET_DATA_PROVIDER`, and `USE_MOCKS`. See
+[`docs/integration-strategy.md`](docs/integration-strategy.md).
+
 ## Non-negotiable safety property
 
 **The AI is never the final authority over money movement or compliance.**
@@ -120,7 +141,47 @@ contracts/            Sui Move package — ownership blueprint (mova_owned.move)
 skills/               reusable skill pack (safety + architecture guidance)
 ```
 
-## Read this first
+## Smart contract
+
+MOVA's on-chain ownership layer lives in [`contracts/mova`](contracts/mova) — a **Sui Move**
+package (`mova`) that represents payment state as **Sui-owned objects** anchored to the user's
+address. Nothing on-chain executes a payment by itself: it records ownership of already-approved,
+settled state, and is only ever created from programmable transaction blocks the **user signs**.
+
+**`contracts/mova/sources/mova_owned.move`** defines three Sui-owned objects:
+
+| Object | Purpose |
+| --- | --- |
+| `MovaPaymentAuthz` | Wallet-scoped, human-approved payment authorization (carries a nonce + expiry for on-chain replay protection) |
+| `OwnedPaymentRecord` | Deterministic payment record whose `state` mirrors the `@mova/types` state machine |
+| `MovaReceipt` | Settlement receipt minted only after `SETTLED` (`tx_digest` empty when simulated) |
+
+Entrypoints: `issue_authz`, `record_payment`, `update_state`, `mint_receipt`, plus read accessors
+(`authz_amount`, `authz_recipient`, `authz_expires_at`, `record_state`, `record_amount`,
+`receipt_digest`).
+
+Published on **Sui testnet** (chain-id `4c78adac`, toolchain `sui 1.78.1`):
+
+| Field | Value |
+| --- | --- |
+| Package id (`MOVA_PACKAGE_ID`) | `0x2baa7a782929b0b2af8cbbfeb20d7f75ac89db18103ae9f2e029858156ea55c2` |
+| UpgradeCap (`MOVA_SMART_WALLET_ADDRESS`) | `0x72e285da7348564f54204eda23a1898762c085856f1f9cc51a231fd1039efe35` |
+
+Build & test:
+
+```bash
+cd contracts/mova
+sui move build                          # compiles (exit 0)
+sui move test                           # unit tests (exit 0)
+sui client publish                      # deploy (needs a sui client account + network gas)
+npx tsx scripts/verify-publish.ts       # verify the published package
+```
+
+`Move.toml` pins the Sui framework to the target network (`framework/testnet` for testnet,
+`framework/mainnet` for mainnet). See [`docs/ownership.md`](docs/ownership.md) and
+[`docs/integration-strategy.md`](docs/integration-strategy.md).
+
+## Documentation
 
 | Document | What it answers |
 | --- | --- |
@@ -135,6 +196,10 @@ skills/               reusable skill pack (safety + architecture guidance)
 | [`docs/integration-strategy.md`](docs/integration-strategy.md) | Sui / Thetanuts / market-data / screening: mock → real strategy |
 | [`docs/conventions.md`](docs/conventions.md) | Logging & error-handling conventions |
 | [`docs/roadmap.md`](docs/roadmap.md) | Phased delivery plan (Phase 1 → n) |
+| [`docs/routing.md`](docs/routing.md) | **Route discovery & mathematical route optimization** — route legs, cost breakdown, weighted scoring |
+| [`docs/execution.md`](docs/execution.md) | **Human approval & payment execution** — `TransactionSpec`, plan digest, idempotency, failure taxonomy |
+| [`docs/trust.md`](docs/trust.md) | Trust model — why AI proposals are never authority |
+| [`docs/ui-ux-redesign.md`](docs/ui-ux-redesign.md) | UI/UX redesign notes for the web shell |
 | [`docs/judge-narrative.md`](docs/judge-narrative.md) | **Final demo runbook** — differentiator → sponsor mapping, demo script, failure/safety matrix |
 
 ## Legacy reference (do not use for MOVA execution)
@@ -166,7 +231,50 @@ npm run dev -w @mova/web      # wallet-connected app shell
 > the connect → sign → ownership → approval → simulated-execution flow can be
 > exercised end-to-end. Disable with `NEXT_PUBLIC_ENABLE_DEMO_WALLET=false`.
 
-## Status
+## Environment variables setup
+
+Two env files, two scopes:
+
+1. **Root `.env`** (server) — copy `.env.example`:
+   ```bash
+   cp .env.example .env
+   ```
+2. **Web `.env.local`** (client, `NEXT_PUBLIC_*` only — **no secrets**) — copy
+   `apps/web/.env.example`:
+   ```bash
+   cp apps/web/.env.example apps/web/.env.local
+   ```
+
+`MOVA_ENV` selects the runtime boundary (`dev` | `testnet` | `mainnet`), enforced
+fail-closed at boot by `checkBoundary()`:
+
+| | `dev` | `testnet` | `mainnet` |
+| --- | --- | --- | --- |
+| Sui network | devnet | testnet | **mainnet** |
+| Mocks | allowed | allowed | **refused (boot error)** |
+| Settlement | simulated or real | simulated or real | **real only (forced)** |
+| Funds | test/free | test tokens | **real** |
+
+Key groups (full spec in [`docs/environment.md`](docs/environment.md), Zod schema in
+`packages/config/src/env.ts`):
+
+| Group | Key variables |
+| --- | --- |
+| Runtime | `MOVA_ENV` |
+| Supabase | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (secret), `SUPABASE_JWT_SECRET` (secret), `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` |
+| AI (Gemini) | `AI_PROVIDER`, `GEMINI_API_KEY` (secret), `AI_MODEL`, `AI_TIMEOUT_MS`, `AI_MAX_RETRIES`, `AI_MAX_TOOL_CALLS` |
+| Sui | `SUI_NETWORK`, `SUI_RPC_URL`, `SUI_FAUCET_URL`, `SUI_PRIVATE_KEY` / `SUI_MNEMONIC` (secret), `MOVA_PACKAGE_ID`, `MOVA_SMART_WALLET_ADDRESS` |
+| Settlement | `SETTLEMENT_MODE` (`simulated` | `real`), `NEXT_PUBLIC_SETTLEMENT_MODE` (web) |
+| Sponsors | `USE_MOCKS`, `MARKET_DATA_PROVIDER`, `THETANUTS_VERSION`, `THETANUTS_OPTIONBOOK_ADDRESS`, `THETANUTS_NETWORK`, `THETANUTS_API_URL` / `THETANUTS_API_KEY` (secret), `NEXT_PUBLIC_THETANUTS_RPC`, `SANCTIONS_LIST_PATH` |
+| QR | `QR_STRICT_CRC` |
+| Logging | `LOG_LEVEL`, `LOG_FORMAT`, `LOG_REDACT_FIELDS`, `AUDIT_RETENTION_DAYS` |
+| Policy | `MANUAL_APPROVAL_THRESHOLD`, `MAX_DAILY_TXN` |
+
+**Secrets** (`GEMINI_API_KEY`, `SUI_PRIVATE_KEY`, `SUI_MNEMONIC`, `SUPABASE_SERVICE_ROLE_KEY`,
+`SUPABASE_JWT_SECRET`, `THETANUTS_API_KEY`) are never committed, never logged (field-name
+redaction), and never returned by an API.
+
+## Development roadmap
 
 - **Phase 0 — foundation**: complete (docs, types, core, config, logger, integrations, QR).
 - **Phase 1 (wallet, ownership & app shell)**: complete — `@mova/wallet`, `docs/ownership.md`,
@@ -187,5 +295,24 @@ npm run dev -w @mova/web      # wallet-connected app shell
   route+hedge); real Thetanuts V4 Optionbook provider (honest UNAVAILABLE fallback) + static
   dev fallback; `RiskAssessmentPanel` in the web shell; `npm run risk:demo`. See
   `docs/risk-hedging.md`.
-- Next: Phase 1 core pipeline (Supabase backend + deterministic engines), then the Move smart-
-  wallet contract + mainnet validation. See `docs/roadmap.md`.
+
+### Future plan
+
+The next milestones (full breakdown in [`docs/roadmap.md`](docs/roadmap.md)):
+
+1. **Phase 1 — Core pipeline (Supabase backend)** — finish the `supabase/` Edge Functions +
+   `PaymentOrchestrator`, Postgres migrations with RLS + append-only `audit_events`, and wire
+   every deterministic engine (`RouteDiscovery`, `RouteOptimizer`, `ComplianceEngine`,
+   `RiskEngine`, `HedgingEngine`, `ApprovalService`, `ExecutionService`, `AuditService`) into the
+   live backend.
+2. **Phase 2 — Real Sui settlement completion** — write & publish the Move **smart-wallet
+   execution package** (executor authorization, replay protection, safe token handling, ported
+   from the `SMART_WALLET.md` EVM patterns), add `TOKEN_TRANSFER` payloads to
+   `SuiSettlementProvider`, then validate the `mainnet` boundary against a funded wallet.
+3. **Phase 3 — Real Thetanuts V4 / Optionbook** — live hedge quotes and executed hedges flowing
+   through the same human-approval gate.
+4. **Phase 5 — Hardening & production readiness** — real screening/market-data providers,
+   monitoring & alerting, retention, load + failure-injection + audit-integrity tests, and
+   `mainnet` dry-run simulations.
+5. **Beyond** — multi-rail support (onramp / DEX / fiat rail), richer structured products for
+   hedging, and continuous compliance/audit hardening.
