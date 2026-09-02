@@ -323,7 +323,8 @@ npx tsx scripts/verify-publish.ts       # verify the published package
 3. **Hardening & production readiness** — real screening/market-data providers,
    monitoring & alerting, retention, load + failure-injection + audit-integrity tests, and
    `mainnet` dry-run simulations.
-4. **Beyond** — multi-rail support (onramp / DEX / fiat rail), richer structured products for
+4. **Regional Expansion & MAS Compliance** — Scale MOVA's compliance engine from Malaysia's BNM AMLA to Singapore's MAS DPT framework, enabling instant, compliant cross-border SME payments across Southeast Asia.
+5. **Beyond** — multi-rail support (onramp / DEX / fiat rail), richer structured products for
    hedging, and continuous compliance/audit hardening.
 
 # ⚠️ Disclaimer
