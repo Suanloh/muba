@@ -941,7 +941,7 @@ function SettleDetail({
               </a>
             </>
           ) : (
-            <>Settled (simulated). No real value moved.</>
+            <>Settled. No real value moved.</>
           )}
         </div>
         {s?.error && <p className="text-ember-text">{s.error}</p>}
