@@ -231,52 +231,6 @@ Comprehensive documentation is available in [`docs/`](./docs):
 | [`roadmap.md`](./docs/roadmap.md) | Phase 0 → Phase 1+: scaling, new features, partnerships |
 | [`judge-narrative.md`](./docs/judge-narrative.md) | Executive summary for audiences (judges, investors, partners) |
 
-## 💪 What We're Proud Of
-
-### 1. **Mathematical Route Optimization**
-We built a proper min-max normalization model across gas, time, steps, and risk with configurable weights. Route selection is provably optimal for a given candidate set—not "whatever the AI guessed."
-
-### 2. **Risk Engine**
-7-point deterministic checks evaluated before human approval. Weighted scoring reflects real-world priorities:
-- Recipient risk: 13 pts
-- Balance validation: 12 pts
-- Gas adequacy: 8 pts
-- Network safety: 7 pts
-- Slippage tolerance: 6 pts
-- Route complexity: 4 pts
-- Counterparty risk: 3 pts
-
-### 3. **Bulletproof Smart Contracts**
-- Incrementing nonces (replay protection)
-- Reentrancy guards (proven with mock attacker)
-- Two-step ownership transfer
-- Safe ERC-20 interoperability (`callOptionalReturn` for non-compliant tokens)
-- 23 unit tests with full coverage
-
-### 4. **Immutable Audit Trail**
-Every step—intent parsing, route ranking, risk scoring, approval, execution—is recorded in Supabase. A single SQL query traces the full lifecycle of any payment for compliance and debugging.
-
-## 🧠 Key Learnings
-
-### AI is a Great Interpreter, Terrible Executor
-
-The natural language → structured intent pipeline works beautifully with Structured Outputs + Zod, but letting LLMs near financial computation or transaction signing is a design anti-pattern. The trust boundary must be explicit and enforced in code, not convention.
-
-### Determinism is a Competitive Advantage
-
-Making route selection and risk scoring purely mathematical (rather than AI-driven) turned out to be a feature, not a limitation. It's auditable, explainable, reproducible, and compliant.
-
-### Race Conditions in Chat UI
-
-We discovered deep-linked prompts could be sent while history was still loading, clobbering the live conversation with stale data. Fixed with functional state updates that never overwrite an active conversation.
-
-### Monorepo Coordination
-
-Five packages with interdependent types, ABIs, and deployment addresses required careful orchestration. Wallet deployment addresses in `localhost.json` must mirror the frontend's ABI registry exactly, or execution silently fails.
-
-### Safe ERC-20 Interoperability
-
-Not all ERC-20 tokens return boolean on transfer (USDT is the classic). We implemented `callOptionalReturn()` with low-level `staticcall` checks to handle both compliant and non-compliant tokens without silently swallowing failures.
 
 ## 🛠️ Tech Stack
 
@@ -312,24 +266,6 @@ Not all ERC-20 tokens return boolean on transfer (USDT is the classic). We imple
 - **npm workspaces** (monorepo coordination)
 - **Hardhat** (contract testing & deployment)
 
-## 📊 Project Status
-
-**Phase 0** (Current): Foundation — AI parsing, route optimization, risk engine, compliance, smart wallet, audit trail
-
-**Roadmap**: See [`docs/roadmap.md`](./docs/roadmap.md) for Phase 1+ plans:
-- Multi-chain settlement (Ethereum, Polygon, Optimism, Arbitrum)
-- Advanced hedging (options, structured swaps)
-- B2B vendor management dashboards
-- Real-time FX quoting and settlement guarantees
-
-## 🤝 Contributing
-
-We welcome contributions! Please:
-
-1. Fork the repo
-2. Create a feature branch (`git checkout -b feature/my-feature`)
-3. Commit with clear messages
-4. Open a pull request
 
 For detailed guidelines, see the individual package READMEs in `packages/*/README.md`.
 
@@ -340,6 +276,9 @@ MIT License — see [`LICENSE`](./LICENSE) for details.
 ## 👥 Authors
 
 Built by **Suanloh** and the MOVA team.
+-**Kong Zi Xuan**
+-
+-
 
 Special thanks to the Web3 payment infrastructure community for inspiration and feedback.
 
@@ -351,66 +290,6 @@ Special thanks to the Web3 payment infrastructure community for inspiration and 
 
 ---
 
-<div align="center">
-
-**MOVA: AI-native. Human-controlled. Compliant. Auditable.**
-
-[View Docs](./docs/) • [Report Issues](https://github.com/suanloh/mova/issues) • [Join Community](https://github.com/suanloh/mova/discussions)
-
-</div>
-
-One-click **Reset demo** clears the flow so you can run it again. Simulated
-settlement is labeled honestly (“no value moves, no fabricated digest”); real
-testnet settlement is one env flag + a funded wallet away, or provable directly
-with `npx tsx scripts/settle-real.ts` (real confirmed on-chain digest).
-
-## Verify the product (all offline & deterministic)
-
-```bash
-npm run typecheck    # 0 errors across all packages + web
-npm test             # 214 tests (ai, core, db, integrations, qr, wallet)
-npm run integration  # 94 checks: full NL + QR pipes, 11 failure modes, 6 AI-safety invariants
-npm run smoke        # Phase 0 smoke: 37 checks
-npm run verify:qr    # demo EMVCo QR payload decodes with a valid CRC
-npm run build -w @mova/web   # clean production build
-npm run dev -w @mova/web -- --port 3001
-```
-
-Also in this build: payments **persist to Supabase** (Postgres + Realtime, via the
-`mova-sync` Edge Function — Settings → "Data layer · Supabase"; runs in-memory
-and labels itself honestly when not configured), the audit report **exports a
-branded PDF** (Activity → Audit trail → Export PDF), the **Thetanuts V4
-OptionBook streams in realtime** (Settings → "Thetanuts OptionBook · realtime"),
-and the **QR tab ships a real, scannable demo QR** (Load into scanner → decode →
-confirm).
-
-`npm run integration` is the judge-facing harness: it drives the **exact web
-pipeline** end-to-end and proves the 8 differentiators, every failure class, and
-the AI-safety boundary (AI can't execute, can't bypass compliance, can't approve
-its own payment, can't modify an approved spec). See
-[`docs/judge-narrative.md`](docs/judge-narrative.md).
-
-## Stack
-
-| Concern | Choice |
-| --- | --- |
-| Frontend | **Next.js** (`apps/web`) + `@mysten/dapp-kit-react` (v2) wallet layer |
-| Backend / DB | **Supabase** (PostgreSQL, Auth, Realtime, Edge Functions) — Phase 1+ |
-| LLM | **Google Gemini** (proposals only) |
-| Settlement | **Sui — Mainnet target** (dev/test use devnet/testnet) |
-| Ownership | **Sui-owned state** anchored to the user's address (`@mova/wallet`, `contracts/mova`) |
-| Hedging | **Thetanuts V4 / Optionbook** |
-| QR | **Local EMVCo decoder** (`packages/qr`, no external call) |
-| Architecture | AI parses/recommends → deterministic engines validate → human approves → wallet executes |
-
-## Non-negotiable safety property
-
-**The AI is never the final authority over money movement or compliance.**
-AI parses, recommends, explains, and assists. Deterministic engines validate,
-score, and enforce policy. A human approves irreversible value movement. The
-deterministic systems and explicit human approval control execution. See
-[`docs/architecture.md`](docs/architecture.md) — this is a compliance incident if
-violated, not a style issue.
 
 ## Repository layout
 
@@ -447,55 +326,3 @@ skills/               reusable skill pack (safety + architecture guidance)
 | [`docs/roadmap.md`](docs/roadmap.md) | Phased delivery plan (Phase 1 → n) |
 | [`docs/judge-narrative.md`](docs/judge-narrative.md) | **Final demo runbook** — differentiator → sponsor mapping, demo script, failure/safety matrix |
 
-## Legacy reference (do not use for MOVA execution)
-
-- `SMART_WALLET.md` — **EVM** (Solidity/Hardhat) smart-wallet spec from a prior
-  "PayMaster" project. MOVA adopts its *security patterns* (authz, replay
-  protection, nonce, reentrancy guard, safe ERC-20 handling) but settles on
-  **Sui (Move)**, not EVM.
-- `COMPLIANCE_LAYER.md` — prior PayMaster compliance prototype. MOVA reuses its
-  *design* (deterministic counterparty screening, monitoring, unified risk
-  score, policy engine, travel rule, audit trail) — the engines are ported as
-  deterministic modules, not as an EVM-linked stack.
-- `SKILL_PACK.md` + `skills/` — generic reusable skill pack. The
-  `ai-deterministic-boundary`, `policy-engine`, `compliance-gate`,
-  `audit-trail`, and `fintech-system-architecture` skills are the governing
-  design rules for MOVA.
-
-## Quick start
-
-```bash
-npm install            # installs workspace deps
-npm run typecheck      # type-checks all packages (incl. web)
-npm run test -w @mova/wallet   # wallet safety-boundary + ownership tests
-cd apps/web && cp .env.local.example .env.local  # web env (defaults: testnet)
-npm run dev -w @mova/web      # wallet-connected app shell
-```
-
-> The web app includes a dev-only **Demo Wallet** (no browser extension needed) so
-> the connect → sign → ownership → approval → simulated-execution flow can be
-> exercised end-to-end. Disable with `NEXT_PUBLIC_ENABLE_DEMO_WALLET=false`.
-
-## Status
-
-- **Phase 0 — foundation**: complete (docs, types, core, config, logger, integrations, QR).
-- **Phase 1 (wallet, ownership & app shell)**: complete — `@mova/wallet`, `docs/ownership.md`,
-  `contracts/mova` ownership blueprint, and the `apps/web` wallet-connected shell. Payment
-  *execution* stays for later phases (settlement is simulated, `txDigest = null`).
-- **Phase 1b / Phase 2 — natural-language payments**: complete — the chat interface turns free
-  text into structured, deterministic payment intents, validates them, explains what it
-  understood, and requires an explicit human confirmation before handing the intent to the
-  pipeline. `@mova/ai` (parser, proposal-only) + `@mova/core` (`IntentValidator`) +
-  `ChatPaymentInterface`. See `docs/nl-payments.md`.
-- **Phase 2 — real Sui settlement (testnet)**: in progress — `SuiSettlementProvider`
-  (`@mova/integrations`) settles native SUI on testnet with a REAL confirmed digest
-  (`scripts/settle-real.ts`), and the web execute path attempts a real on-chain transfer via
-  the connected wallet (gated) with an honest simulated fallback. Remaining: the custom Move
-  smart-wallet contract (needs the Sui CLI) and mainnet validation. See `docs/roadmap.md`.
-- **Phase 6 — risk assessment & Thetanuts hedging**: complete — deterministic `RiskEngine` +
-  `HedgingEngine` + `HedgedRouteEngine` feed MOVA's final payment recommendation (route vs
-  route+hedge); real Thetanuts V4 Optionbook provider (honest UNAVAILABLE fallback) + static
-  dev fallback; `RiskAssessmentPanel` in the web shell; `npm run risk:demo`. See
-  `docs/risk-hedging.md`.
-- Next: Phase 1 core pipeline (Supabase backend + deterministic engines), then the Move smart-
-  wallet contract + mainnet validation. See `docs/roadmap.md`.
