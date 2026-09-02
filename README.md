@@ -17,11 +17,9 @@
 
 Web3 payment infrastructure suffers from three critical inefficiencies:
 
-| Problem | Impact |
-|---------|--------|
-| **Capital Inefficiency** | Assets locked in yield protocols or sitting idle can't easily move for real-world payments |
-| **Operational Friction** | Manual steps—cross-chain transfers, gas management, token swaps—are time-consuming, expensive, and error-prone |
-| **Lack of Autonomy** | No systems understand user intent and automatically execute optimal transactions end-to-end |
+- **Capital inefficiency:** assets locked in yield protocols or sitting idle can't easily move for real-world payments.
+- **Operational friction:** manual steps (cross-chain transfers, gas management, token swaps) are slow, costly, and error-prone.
+- **Lack of autonomy:** no systems understand user intent and execute optimal transactions end-to-end.
 
 Today's finance teams spend hours manually executing multi-step transactions. Tomorrow's finance should be natural language.
 
@@ -281,17 +279,15 @@ fail-closed at boot by `checkBoundary()`:
 Key groups (full spec in [`docs/environment.md`](docs/environment.md), Zod schema in
 `packages/config/src/env.ts`):
 
-| Group | Key variables |
-| --- | --- |
-| Runtime | `MOVA_ENV` |
-| Supabase | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (secret), `SUPABASE_JWT_SECRET` (secret), `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` |
-| AI (Gemini) | `AI_PROVIDER`, `GEMINI_API_KEY` (secret), `AI_MODEL`, `AI_TIMEOUT_MS`, `AI_MAX_RETRIES`, `AI_MAX_TOOL_CALLS` |
-| Sui | `SUI_NETWORK`, `SUI_RPC_URL`, `SUI_FAUCET_URL`, `SUI_PRIVATE_KEY` / `SUI_MNEMONIC` (secret), `MOVA_PACKAGE_ID`, `MOVA_SMART_WALLET_ADDRESS` |
-| Settlement | `SETTLEMENT_MODE` (`simulated` | `real`), `NEXT_PUBLIC_SETTLEMENT_MODE` (web) |
-| Sponsors | `USE_MOCKS`, `MARKET_DATA_PROVIDER`, `THETANUTS_VERSION`, `THETANUTS_OPTIONBOOK_ADDRESS`, `THETANUTS_NETWORK`, `THETANUTS_API_URL` / `THETANUTS_API_KEY` (secret), `NEXT_PUBLIC_THETANUTS_RPC`, `SANCTIONS_LIST_PATH` |
-| QR | `QR_STRICT_CRC` |
-| Logging | `LOG_LEVEL`, `LOG_FORMAT`, `LOG_REDACT_FIELDS`, `AUDIT_RETENTION_DAYS` |
-| Policy | `MANUAL_APPROVAL_THRESHOLD`, `MAX_DAILY_TXN` |
+- **Runtime:** `MOVA_ENV`
+- **Supabase:** `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (secret), `SUPABASE_JWT_SECRET` (secret), `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- **AI (Gemini):** `AI_PROVIDER`, `GEMINI_API_KEY` (secret), `AI_MODEL`, `AI_TIMEOUT_MS`, `AI_MAX_RETRIES`, `AI_MAX_TOOL_CALLS`
+- **Sui:** `SUI_NETWORK`, `SUI_RPC_URL`, `SUI_FAUCET_URL`, `SUI_PRIVATE_KEY` / `SUI_MNEMONIC` (secret), `MOVA_PACKAGE_ID`, `MOVA_SMART_WALLET_ADDRESS`
+- **Settlement:** `SETTLEMENT_MODE` (`simulated` | `real`), `NEXT_PUBLIC_SETTLEMENT_MODE`
+- **Sponsors:** `USE_MOCKS`, `MARKET_DATA_PROVIDER`, `THETANUTS_VERSION`, `THETANUTS_OPTIONBOOK_ADDRESS`, `THETANUTS_NETWORK`, `THETANUTS_API_URL`, `THETANUTS_API_KEY` (secret), `NEXT_PUBLIC_THETANUTS_RPC`, `SANCTIONS_LIST_PATH`
+- **QR:** `QR_STRICT_CRC`
+- **Logging:** `LOG_LEVEL`, `LOG_FORMAT`, `LOG_REDACT_FIELDS`, `AUDIT_RETENTION_DAYS`
+- **Policy:** `MANUAL_APPROVAL_THRESHOLD`, `MAX_DAILY_TXN`
 
 **Secrets** (`GEMINI_API_KEY`, `SUI_PRIVATE_KEY`, `SUI_MNEMONIC`, `SUPABASE_SERVICE_ROLE_KEY`,
 `SUPABASE_JWT_SECRET`, `THETANUTS_API_KEY`) are never committed, never logged (field-name
@@ -299,43 +295,11 @@ redaction), and never returned by an API.
 
 ## Development roadmap
 
-- **Phase 0 — foundation**: complete (docs, types, core, config, logger, integrations, QR).
-- **Phase 1 (wallet, ownership & app shell)**: complete — `@mova/wallet`, `docs/ownership.md`,
-  `contracts/mova` ownership blueprint, and the `apps/web` wallet-connected shell. Payment
-  *execution* stays for later phases (settlement is simulated, `txDigest = null`).
-- **Phase 1b / Phase 2 — natural-language payments**: complete — the chat interface turns free
-  text into structured, deterministic payment intents, validates them, explains what it
-  understood, and requires an explicit human confirmation before handing the intent to the
-  pipeline. `@mova/ai` (parser, proposal-only) + `@mova/core` (`IntentValidator`) +
-  `ChatPaymentInterface`. See `docs/nl-payments.md`.
-- **Phase 2 — real Sui settlement (testnet)**: in progress — `SuiSettlementProvider`
-  (`@mova/integrations`) settles native SUI on testnet with a REAL confirmed digest
-  (`scripts/settle-real.ts`), and the web execute path attempts a real on-chain transfer via
-  the connected wallet (gated) with an honest simulated fallback. Remaining: the custom Move
-  smart-wallet contract (needs the Sui CLI) and mainnet validation. See `docs/roadmap.md`.
-- **Phase 6 — risk assessment & Thetanuts hedging**: complete — deterministic `RiskEngine` +
-  `HedgingEngine` + `HedgedRouteEngine` feed MOVA's final payment recommendation (route vs
-  route+hedge); real Thetanuts V4 Optionbook provider (honest UNAVAILABLE fallback) + static
-  dev fallback; `RiskAssessmentPanel` in the web shell; `npm run risk:demo`. See
-  `docs/risk-hedging.md`.
+- [x] **Phase 0 — Foundation:** docs, types, core, config, logger, integrations, QR.
+- [x] **Phase 1 — Wallet, ownership, app shell:** `@mova/wallet`, ownership model/docs, `contracts/mova`, web shell.
+- [x] **Phase 1b / 2 — Natural-language payments:** parser (`@mova/ai`), intent validation, explicit user confirmation flow.
+- [ ] **Phase 2 — Real Sui settlement completion:** smart-wallet execution package + mainnet boundary validation.
+- [x] **Phase 6 — Risk + hedging recommendation:** deterministic risk/hedge engines and web risk panel.
+- [ ] **Next:** Supabase-backed orchestration, real Thetanuts hedge execution, production hardening, multi-rail expansion.
 
-### Future plan
-
-The next milestones (full breakdown in [`docs/roadmap.md`](docs/roadmap.md)):
-
-1. **Phase 1 — Core pipeline (Supabase backend)** — finish the `supabase/` Edge Functions +
-   `PaymentOrchestrator`, Postgres migrations with RLS + append-only `audit_events`, and wire
-   every deterministic engine (`RouteDiscovery`, `RouteOptimizer`, `ComplianceEngine`,
-   `RiskEngine`, `HedgingEngine`, `ApprovalService`, `ExecutionService`, `AuditService`) into the
-   live backend.
-2. **Phase 2 — Real Sui settlement completion** — write & publish the Move **smart-wallet
-   execution package** (executor authorization, replay protection, safe token handling, ported
-   from the `SMART_WALLET.md` EVM patterns), add `TOKEN_TRANSFER` payloads to
-   `SuiSettlementProvider`, then validate the `mainnet` boundary against a funded wallet.
-3. **Phase 3 — Real Thetanuts V4 / Optionbook** — live hedge quotes and executed hedges flowing
-   through the same human-approval gate.
-4. **Phase 5 — Hardening & production readiness** — real screening/market-data providers,
-   monitoring & alerting, retention, load + failure-injection + audit-integrity tests, and
-   `mainnet` dry-run simulations.
-5. **Beyond** — multi-rail support (onramp / DEX / fiat rail), richer structured products for
-   hedging, and continuous compliance/audit hardening.
+For detailed milestones and sequencing, see [`docs/roadmap.md`](docs/roadmap.md).
