@@ -381,9 +381,11 @@ function drawLifecycleRail(doc: jsPDF, report: AuditReportData, y: number): numb
   doc.setDrawColor(LINE);
   doc.setLineWidth(1.2);
   for (let i = 0; i < dots.length - 1; i++) {
-    if (dots[i].page === dots[i + 1].page) {
-      doc.setPage(dots[i].page);
-      doc.line(dotX, dots[i].y + 4, dotX, dots[i + 1].y - 4);
+    const cur = dots[i];
+    const nxt = dots[i + 1];
+    if (cur && nxt && cur.page === nxt.page) {
+      doc.setPage(cur.page);
+      doc.line(dotX, cur.y + 4, dotX, nxt.y - 4);
     }
   }
   for (const d of dots) {
