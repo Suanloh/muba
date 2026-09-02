@@ -91,13 +91,69 @@ npm run build -w @mova/web   # clean production build
 npm run dev -w @mova/web -- --port 3001
 ```
 
-Also in this build: payments **persist to Supabase** (Postgres + Realtime, via the
-`mova-sync` Edge Function — Settings → "Data layer · Supabase"; runs in-memory
-and labels itself honestly when not configured), the audit report **exports a
-branded PDF** (Activity → Audit trail → Export PDF), the **Thetanuts V4
-OptionBook streams in realtime** (Settings → "Thetanuts OptionBook · realtime"),
-and the **QR tab ships a real, scannable demo QR** (Load into scanner → decode →
-confirm).
+## Full start
+
+```bash
+npm install            # installs workspace deps
+npm run typecheck      # type-checks all packages (incl. web)
+npm run test -w @mova/wallet   # wallet safety-boundary + ownership tests
+cd apps/web && cp .env.local.example .env.local  # web env (defaults: testnet)
+npm run dev -w @mova/web      # wallet-connected app shell
+```
+
+> The web app includes a dev-only **Demo Wallet** (no browser extension needed) so
+> the connect → sign → ownership → approval → simulated-execution flow can be
+> exercised end-to-end. Disable with `NEXT_PUBLIC_ENABLE_DEMO_WALLET=false`.
+
+## Environment variables setup
+
+Two env files, two scopes:
+
+1. **Root `.env`** (server) — copy `.env.example`:
+   ```bash
+   cp .env.example .env
+   ```
+2. **Web `.env.local`** (client, `NEXT_PUBLIC_*` only — **no secrets**) — copy
+   `apps/web/.env.example`:
+   ```bash
+   cp apps/web/.env.example apps/web/.env.local
+   ```
+
+`MOVA_ENV` selects the runtime boundary (`dev` | `testnet` | `mainnet`), enforced
+fail-closed at boot by `checkBoundary()`:
+
+| | `dev` | `testnet` | `mainnet` |
+| --- | --- | --- | --- |
+| Sui network | devnet | testnet | **mainnet** |
+| Mocks | allowed | allowed | **refused (boot error)** |
+| Settlement | simulated or real | simulated or real | **real only (forced)** |
+| Funds | test/free | test tokens | **real** |
+
+Key groups (full spec in [`docs/environment.md`](docs/environment.md), Zod schema in
+`packages/config/src/env.ts`):
+
+| Category | Environment variables |
+|---|---|
+| **Runtime** | `MOVA_ENV` |
+| **Supabase** | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` *(secret)*, `SUPABASE_JWT_SECRET` *(secret)*, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` |
+| **AI (Gemini)** | `AI_PROVIDER`, `GEMINI_API_KEY` *(secret)*, `AI_MODEL`, `AI_TIMEOUT_MS`, `AI_MAX_RETRIES`, `AI_MAX_TOOL_CALLS` |
+| **Sui** | `SUI_NETWORK`, `SUI_RPC_URL`, `SUI_FAUCET_URL`, `SUI_PRIVATE_KEY` / `SUI_MNEMONIC` *(secret)*, `MOVA_PACKAGE_ID`, `MOVA_SMART_WALLET_ADDRESS` |
+| **Settlement** | `SETTLEMENT_MODE` (`simulated` / `real`), `NEXT_PUBLIC_SETTLEMENT_MODE` |
+| **Sponsors** | `USE_MOCKS`, `MARKET_DATA_PROVIDER`, `THETANUTS_VERSION`, `THETANUTS_OPTIONBOOK_ADDRESS`, `THETANUTS_NETWORK`, `THETANUTS_API_URL`, `THETANUTS_API_KEY` *(secret)*, `NEXT_PUBLIC_THETANUTS_RPC`, `SANCTIONS_LIST_PATH` |
+| **QR** | `QR_STRICT_CRC` |
+| **Logging** | `LOG_LEVEL`, `LOG_FORMAT`, `LOG_REDACT_FIELDS`, `AUDIT_RETENTION_DAYS` |
+| **Policy** | `MANUAL_APPROVAL_THRESHOLD`, `MAX_DAILY_TXN` |
+
+**Secrets** (`GEMINI_API_KEY`, `SUI_PRIVATE_KEY`, `SUI_MNEMONIC`, `SUPABASE_SERVICE_ROLE_KEY`,
+`SUPABASE_JWT_SECRET`, `THETANUTS_API_KEY`) are never committed, never logged (field-name
+redaction), and never returned by an API.
+
+Also in this build:
+
+- **Supabase:** Payments persist to Postgres and sync via Realtime through the `mova-sync` Edge Function. Falls back to in-memory storage when not configured.
+- **Audit PDF:** Export a branded audit report from `Activity → Audit trail → Export PDF`.
+- **Thetanuts V4:** OptionBook data streams in realtime via `Settings → Thetanuts OptionBook · realtime`.
+- **QR Payments:** Includes a real, scannable demo QR — `Load into scanner → Decode → Confirm`.
 
 `npm run integration` is the judge-facing harness: it drives the **exact web
 pipeline** end-to-end and proves the 8 differentiators, every failure class, and
@@ -246,60 +302,6 @@ npx tsx scripts/verify-publish.ts       # verify the published package
   `audit-trail`, and `fintech-system-architecture` skills are the governing
   design rules for MOVA.
 
-## Quick start
-
-```bash
-npm install            # installs workspace deps
-npm run typecheck      # type-checks all packages (incl. web)
-npm run test -w @mova/wallet   # wallet safety-boundary + ownership tests
-cd apps/web && cp .env.local.example .env.local  # web env (defaults: testnet)
-npm run dev -w @mova/web      # wallet-connected app shell
-```
-
-> The web app includes a dev-only **Demo Wallet** (no browser extension needed) so
-> the connect → sign → ownership → approval → simulated-execution flow can be
-> exercised end-to-end. Disable with `NEXT_PUBLIC_ENABLE_DEMO_WALLET=false`.
-
-## Environment variables setup
-
-Two env files, two scopes:
-
-1. **Root `.env`** (server) — copy `.env.example`:
-   ```bash
-   cp .env.example .env
-   ```
-2. **Web `.env.local`** (client, `NEXT_PUBLIC_*` only — **no secrets**) — copy
-   `apps/web/.env.example`:
-   ```bash
-   cp apps/web/.env.example apps/web/.env.local
-   ```
-
-`MOVA_ENV` selects the runtime boundary (`dev` | `testnet` | `mainnet`), enforced
-fail-closed at boot by `checkBoundary()`:
-
-| | `dev` | `testnet` | `mainnet` |
-| --- | --- | --- | --- |
-| Sui network | devnet | testnet | **mainnet** |
-| Mocks | allowed | allowed | **refused (boot error)** |
-| Settlement | simulated or real | simulated or real | **real only (forced)** |
-| Funds | test/free | test tokens | **real** |
-
-Key groups (full spec in [`docs/environment.md`](docs/environment.md), Zod schema in
-`packages/config/src/env.ts`):
-
-- **Runtime:** `MOVA_ENV`
-- **Supabase:** `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (secret), `SUPABASE_JWT_SECRET` (secret), `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- **AI (Gemini):** `AI_PROVIDER`, `GEMINI_API_KEY` (secret), `AI_MODEL`, `AI_TIMEOUT_MS`, `AI_MAX_RETRIES`, `AI_MAX_TOOL_CALLS`
-- **Sui:** `SUI_NETWORK`, `SUI_RPC_URL`, `SUI_FAUCET_URL`, `SUI_PRIVATE_KEY` / `SUI_MNEMONIC` (secret), `MOVA_PACKAGE_ID`, `MOVA_SMART_WALLET_ADDRESS`
-- **Settlement:** `SETTLEMENT_MODE` (`simulated` | `real`), `NEXT_PUBLIC_SETTLEMENT_MODE`
-- **Sponsors:** `USE_MOCKS`, `MARKET_DATA_PROVIDER`, `THETANUTS_VERSION`, `THETANUTS_OPTIONBOOK_ADDRESS`, `THETANUTS_NETWORK`, `THETANUTS_API_URL`, `THETANUTS_API_KEY` (secret), `NEXT_PUBLIC_THETANUTS_RPC`, `SANCTIONS_LIST_PATH`
-- **QR:** `QR_STRICT_CRC`
-- **Logging:** `LOG_LEVEL`, `LOG_FORMAT`, `LOG_REDACT_FIELDS`, `AUDIT_RETENTION_DAYS`
-- **Policy:** `MANUAL_APPROVAL_THRESHOLD`, `MAX_DAILY_TXN`
-
-**Secrets** (`GEMINI_API_KEY`, `SUI_PRIVATE_KEY`, `SUI_MNEMONIC`, `SUPABASE_SERVICE_ROLE_KEY`,
-`SUPABASE_JWT_SECRET`, `THETANUTS_API_KEY`) are never committed, never logged (field-name
-redaction), and never returned by an API.
 
 ## Development roadmap
 
