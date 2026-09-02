@@ -1,60 +1,83 @@
-# MOVA — AI-native Autonomous Payment Agent
+# 🏦 MOVA — AI-Native Autonomous Payment Agent
 
+> **MOVA transforms natural language payment instructions into fully audited, compliant blockchain transactions on Sui.**
+>
+> Users describe what they want to pay. MOVA parses intent, discovers optimal routes, validates compliance, manages financial exposure, and settles payments—**while keeping humans in control at every critical step.**
 
-> **MOVA lets users describe what they want to pay in plain language. MOVA finds
-> the best route, checks compliance, manages financial exposure, and settles the
-> payment on Sui — while keeping a human in control.**
+<div align="center">
 
-MOVA turns a human payment intent (typed in natural language, or scanned from a
-local EMVCo QR) into an audited, approved, executed settlement on **Sui**, with
-risk management via **Thetanuts**-style structured products.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/typescript-%5E5.7-blue)](https://www.typescriptlang.org/)
+[![Monorepo](https://img.shields.io/badge/monorepo-npm%20workspaces-blueviolet)](https://docs.npmjs.com/cli/v8/using-npm/workspaces)
+
+</div>
+
+## 🎯 The Problem
+
+Web3 payment infrastructure suffers from three critical inefficiencies:
+
+| Problem | Impact |
+|---------|--------|
+| **Capital Inefficiency** | Assets locked in yield protocols or sitting idle can't easily move for real-world payments |
+| **Operational Friction** | Manual steps—cross-chain transfers, gas management, token swaps—are time-consuming, expensive, and error-prone |
+| **Lack of Autonomy** | No systems understand user intent and automatically execute optimal transactions end-to-end |
+
+Today's finance teams spend hours manually executing multi-step transactions. Tomorrow's finance should be natural language.
+
+## 💡 The Solution
+
+MOVA is a full-stack AI-native payment system that bridges blockchain liquidity with real-world payment rails:
 
 ```
-User Intent → AI Parsing → Route Discovery → Route Optimization → Compliance
-→ Risk/Hedging → Human Approval → Wallet Authz → Sui Settlement → Status/Audit
+User Intent → Parse → Route → Optimize → Comply → Score Risk → Approve → Execute → Audit
 ```
 
-Everything an AI suggests is *proposal only*; deterministic engines validate and
-enforce; a human approves the exact plan digest; the wallet signs; only then does
-value move.
+**Key insight:** Everything the AI proposes is *proposal only*. Deterministic engines validate; humans approve the exact plan; the wallet signs; value moves. Trust boundary is explicit and enforced in code.
 
-## The story (one minute for a judge)
+### 9-Step Payment Lifecycle
 
-1. A user **says** (or scans) what they want to pay — e.g. *"Pay RM200 to this
-   merchant."*
-2. MOVA **parses** the intent (natural language, or a local **EMVCo QR** — no
-   third-party API), and shows what it understood.
-3. MOVA **finds the cheapest route** across rails and shows the math.
-4. MOVA runs a fail-closed **regulatory compliance** screen.
-5. MOVA **scores financial exposure** (VaR / FX) and decides whether a
-   **Thetanuts hedge** is worth it — and explains it.
-6. A **human approves** the plan digest; the **wallet signs**.
-7. The payment **settles on Sui** — with a receipt, live status, and an
-   **append-only audit trail** explaining every decision.
+1. **Intent Capture** — Natural language ("Pay RM200 to merchant") or EMVCo QR scan
+2. **Intent Parse** — LLM interprets user request → typed `PaymentIntent` (no financial computation)
+3. **Route Discovery** — Find execution paths across liquidity pools and payment rails
+4. **Route Optimization** — Min-max scoring: gas, speed, steps, and risk (fully deterministic, auditable)
+5. **Compliance Check** — Regulatory screening (fail-closed, non-blocking)
+6. **Risk Assessment** — 7-point risk engine: balance, gas, recipient, network, slippage, route, complexity
+7. **Hedge Decision** — Thetanuts-style structured products for FX/VaR exposure
+8. **Human Approval** — Finance manager reviews and signs the exact plan digest
+9. **Settlement & Audit** — Sui blockchain execution; immutable append-only audit trail; receipt + explanation
 
-## Run the demo
+## 🚀 Quick Start
+
+### Prerequisites
+
+- **Node.js** ≥ 20
+- **npm** workspaces-compatible version
+
+### Installation & Demo
 
 ```bash
+# Clone and install
+git clone https://github.com/suanloh/mova.git
+cd mova
 npm install
-npm run dev -w @mova/web -- --port 3001      # open http://localhost:3001
+
+# Run the development web UI
+npm run dev -w @mova/web -- --port 3001
+# Open http://localhost:3001 in your browser
 ```
 
-Connect the built-in **MOVA Demo Wallet**, then:
+### Demo Walkthrough
 
-| Step | What happens on screen |
-| --- | --- |
-| 1. Say it | Click **“Pay RM200 to this merchant.”** — MOVA parses the fiat amount and flags the unresolved merchant. |
-| 2. Scan it | Paste the demo EMVCo payload in **Pay by QR** → *Decode payload* → **Confirm payment**. |
-| 3. Review | MOVA shows the route + cost math, compliance verdict, risk score, and hedge decision. |
-| 4. Approve | Tick *“I understand…”*, click **Approve payment**, then **Authorize & execute**. |
-| 5. Verify | The 9-step lifecycle ends **SETTLED**; a **receipt**, the **audit trail**, and the **explanation** appear. |
+| Step | You do | MOVA does |
+|------|--------|-----------|
+| 1. **Say It** | Type or paste payment instruction | Parses natural language → flags unknowns (merchant, recipient, amount, account) |
+| 2. **Scan It** | Paste EMVCo QR payload | Decodes locally (no third-party API); shows memo + amount |
+| 3. **Review** | View proposed route, cost, compliance, risk, hedge | Shows cost math, regulatory verdict, risk score (0–100), hedge rationale |
+| 4. **Approve** | Tick *"I understand the risks"* → click **Approve** | Wallet signs the exact plan digest (nothing more, nothing less) |
+| 5. **Verify** | Watch 9-step execution live | Sui settlement confirms → receipt, audit trail, detailed explanation of every decision |
 
-One-click **Reset demo** clears the flow so you can run it again. Simulated
-settlement is labeled honestly (“no value moves, no fabricated digest”); real
-testnet settlement is one env flag + a funded wallet away, or provable directly
-with `npx tsx scripts/settle-real.ts` (real confirmed on-chain digest).
-
-## Verify the product (all offline & deterministic)
+### Run Other Demos
 
 ```bash
 npm run typecheck    # 0 errors across all packages + web
