@@ -342,7 +342,7 @@ Do not use real funds with experimental deployments.
 | Name          | Role      |
 | ------------- | --------- |
 | KONG ZI XUAN  | Developer |
-| -  | Developer |
+| KOK YONG BIN  | Developer |
 | CHAIR YAN TING | Developer |
 
 ---
