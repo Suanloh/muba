@@ -12,7 +12,7 @@ import { WalletStatusCard } from "@/components/WalletStatusCard";
 import { OwnershipPanel } from "@/components/OwnershipPanel";
 import { ZkLoginPanel } from "@/components/settings/ZkLoginPanel";
 import { MemWalPanel } from "@/components/settings/MemWalPanel";
-import { SupabasePanel } from "@/components/settings/SupabasePanel";
+// import { SupabasePanel } from "@/components/settings/SupabasePanel";
 import { ThetanutsLivePanel } from "@/components/settings/ThetanutsLivePanel";
 
 function ToggleRow({
@@ -100,7 +100,7 @@ export function SettingsPanel() {
       <OwnershipPanel />
       <ZkLoginPanel />
       <MemWalPanel />
-      <SupabasePanel />
+      {/* <SupabasePanel /> */}
       <ThetanutsLivePanel />
     </div>
   );
