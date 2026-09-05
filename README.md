@@ -180,7 +180,33 @@ MOVA is built on sponsor-provided building blocks. Every external dependency sit
 provider interface in `packages/integrations` with a **deterministic mock** for local/dev use and
 a **real provider** swapped in by config (never by touching core engine code).
 
+---
 
+# Blockchain technology
+
+MOVA settles on **Sui** (Move-based Layer 1), using **Move smart contracts**:
+
+* **Language:** Move ( `edition = "2024.beta"` )
+* **Framework:** Sui Framework, pinned to the `framework/testnet` revision in `Move.toml`
+* **Network:** Sui **testnet** (chain-id `4c78adac` )
+* **Contract module:** `mova_owned` (source at `mova_owned.move` )
+
+The Move package declares three on-chain resources: `MovaPaymentAuthz` , `OwnedPaymentRecord` , and `MovaReceipt` , with the entry functions `record_payment` (atomic payment + ownership record in one PTB) and `mint_receipt` .
+
+### Smart contract addresses (testnet)
+
+From `Published.toml` :
+
+| Item | Address |
+| :--- | :--- |
+| **Package ID** ( `published-at` / `original-id` ) | `0x2baa7a782929b0b2af8cbbfeb20d7f75ac89db18103ae9f2e029858156ea55c2` |
+| **Upgrade Capability** | `0x72e285da7348564f54204eda23a1898762c085856f1f9cc51a231fd1039efe35` |
+| **Chain ID** | `4c78adac` (Sui testnet) |
+| **Toolchain** | `1.78.1` |
+
+These are also mirrored in `.env` as `MOVA_PACKAGE_ID` (package address) and `MOVA_SMART_WALLET_ADDRESS` (the UpgradeCap object id — MOVA anchors ownership at the user's address, so there is no separate smart-wallet contract). You can verify consistency with `npx tsx scripts/verify-publish.ts` .
+
+Note: the `mova` package address is declared as `0x0` in `Move.toml` ; the canonical published address lives in `Published.toml` and is injected at publish time.
 
 ### Sponsors & Tools
 
